@@ -46,7 +46,18 @@ SAMPLE_NAMES = {
     "specimen",
     "specimenid",
 }
-GROUP_NAMES = {"area", "group", "locality", "location", "region", "suite"}
+GROUP_NAMES = {
+    "area",
+    "group",
+    "lithology",
+    "lithologicalgroup",
+    "locality",
+    "location",
+    "region",
+    "rocktype",
+    "samplegroup",
+    "suite",
+}
 
 UNIT_PATTERN = r"ppm|ppb|wt\s*%|wt\s*pct|wt\s*percent"
 REE_HEADER_PATTERN = re.compile(
@@ -132,7 +143,113 @@ def resolve_sheet(sheet_names: list[str], requested: str | None) -> str | None:
     )
 
 
-def read_table(path: Path, requested_sheet: str | None) -> tuple[pd.DataFrame | None, dict[str, Any]]:
+def adapt_transposed_table(
+    raw: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, Any]] | None:
+    """Convert a common paper-supplement layout into one row per sample."""
+    if raw.empty or raw.shape[0] < 4 or raw.shape[1] < 3:
+        return None
+
+    best_label_column: int | None = None
+    best_element_rows: dict[str, int] = {}
+    for column_index in range(raw.shape[1]):
+        element_rows: dict[str, int] = {}
+        duplicate = False
+        for row_index, value in raw.iloc[:, column_index].items():
+            element = match_ree_column(value)
+            if element is None:
+                continue
+            if element in element_rows:
+                duplicate = True
+                break
+            element_rows[element] = int(row_index)
+        if not duplicate and len(element_rows) > len(best_element_rows):
+            best_label_column = column_index
+            best_element_rows = element_rows
+
+    if best_label_column is None or len(best_element_rows) < 3:
+        return None
+
+    sample_rows = [
+        int(row_index)
+        for row_index, value in raw.iloc[:, best_label_column].items()
+        if clean_name(value) in SAMPLE_NAMES
+        and int(raw.iloc[int(row_index)].notna().sum()) >= 3
+    ]
+    if len(sample_rows) != 1:
+        return None
+    sample_row = sample_rows[0]
+
+    sample_columns = [
+        column_index
+        for column_index in range(raw.shape[1])
+        if column_index != best_label_column
+        and pd.notna(raw.iat[sample_row, column_index])
+        and str(raw.iat[sample_row, column_index]).strip()
+    ]
+    if len(sample_columns) < 2:
+        return None
+
+    group_row: int | None = None
+    for row_index in range(sample_row):
+        if clean_name(raw.iat[row_index, best_label_column]) in GROUP_NAMES:
+            group_row = row_index
+
+    first_element_row = min(best_element_rows.values())
+    section_unit = "unknown"
+    unit_source_row: int | None = None
+    for row_index in range(sample_row + 1, first_element_row + 1):
+        candidate_unit = infer_unit(raw.iat[row_index, best_label_column])
+        if candidate_unit != "unknown":
+            section_unit = candidate_unit
+            unit_source_row = row_index
+
+    samples = [str(raw.iat[sample_row, column]).strip() for column in sample_columns]
+    converted: dict[str, list[Any]] = {"Sample": samples}
+    if group_row is not None:
+        group_values = pd.Series(
+            [raw.iat[group_row, column] for column in sample_columns],
+            dtype="object",
+        ).ffill()
+        if group_values.notna().any():
+            converted["Group"] = [
+                None if pd.isna(value) else str(value).strip()
+                for value in group_values.tolist()
+            ]
+
+    for element in REE_ORDER:
+        if element not in best_element_rows:
+            continue
+        original_label = raw.iat[best_element_rows[element], best_label_column]
+        explicit_unit = infer_unit(original_label)
+        unit = explicit_unit if explicit_unit != "unknown" else section_unit
+        output_name = f"{element}_{unit}" if unit != "unknown" else element
+        converted[output_name] = [
+            raw.iat[best_element_rows[element], column] for column in sample_columns
+        ]
+
+    metadata = {
+        "method": "auto_transpose_elements_by_row",
+        "sample_header_row": sample_row + 1,
+        "sample_identifier_label": str(raw.iat[sample_row, best_label_column]),
+        "sample_count": len(sample_columns),
+        "element_label_column": best_label_column + 1,
+        "recognized_elements": [
+            element for element in REE_ORDER if element in best_element_rows
+        ],
+        "group_header_row": None if group_row is None else group_row + 1,
+        "group_label": (
+            None if group_row is None else str(raw.iat[group_row, best_label_column])
+        ),
+        "inferred_unit": section_unit,
+        "unit_source_row": None if unit_source_row is None else unit_source_row + 1,
+    }
+    return pd.DataFrame(converted), metadata
+
+
+def read_table(
+    path: Path, requested_sheet: str | None
+) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Read one supported table and return its source metadata."""
     if not path.exists() or not path.is_file():
         raise InspectionError(f"找不到输入文件：{path}")
@@ -150,6 +267,8 @@ def read_table(path: Path, requested_sheet: str | None) -> tuple[pd.DataFrame | 
         "sheet_names": [],
         "encoding": None,
         "delimiter": None,
+        "layout": None,
+        "transformation": None,
     }
 
     try:
@@ -157,7 +276,15 @@ def read_table(path: Path, requested_sheet: str | None) -> tuple[pd.DataFrame | 
             encoding, delimiter = sniff_text_format(path)
             source["encoding"] = encoding
             source["delimiter"] = "TAB" if delimiter == "\t" else delimiter
+            raw = pd.read_csv(path, sep=delimiter, encoding=encoding, header=None)
+            adapted = adapt_transposed_table(raw)
+            if adapted is not None:
+                frame, transformation = adapted
+                source["layout"] = "column_per_sample_transposed"
+                source["transformation"] = transformation
+                return frame, source
             frame = pd.read_csv(path, sep=delimiter, encoding=encoding)
+            source["layout"] = "row_per_sample"
             return frame, source
 
         workbook = pd.ExcelFile(path)
@@ -166,6 +293,14 @@ def read_table(path: Path, requested_sheet: str | None) -> tuple[pd.DataFrame | 
         if selected_sheet is None:
             return None, source
         source["sheet"] = selected_sheet
+        raw = pd.read_excel(workbook, sheet_name=selected_sheet, header=None)
+        adapted = adapt_transposed_table(raw)
+        if adapted is not None:
+            frame, transformation = adapted
+            source["layout"] = "column_per_sample_transposed"
+            source["transformation"] = transformation
+            return frame, source
+        source["layout"] = "row_per_sample"
         return pd.read_excel(workbook, sheet_name=selected_sheet), source
     except InspectionError:
         raise

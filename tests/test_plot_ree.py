@@ -155,3 +155,30 @@ def test_non_positive_input_blocks_all_exports(tmp_path: Path) -> None:
     assert result.returncode == 2
     assert report["status"] == "blocked"
     assert not output_dir.exists()
+
+
+def test_transposed_published_layout_exports_figure(tmp_path: Path) -> None:
+    input_path = tmp_path / "published_layout.xlsx"
+    output_dir = tmp_path / "figures"
+    raw = pd.DataFrame(
+        [
+            ["Published supplementary table", None, None, None],
+            ["Rock type", "Group A", None, "Group B"],
+            ["Sample No.", "S-1", "S-2", "S-3"],
+            ["Trace element (ppm)", None, None, None],
+            ["La", 0.237, 0.474, 0.711],
+            ["Ce", 0.612, 1.224, 1.836],
+            ["Pr", 0.095, 0.190, 0.285],
+            ["Nd", 0.467, 0.934, 1.401],
+        ]
+    )
+    raw.to_excel(input_path, index=False, header=False)
+
+    result, report = run_plotter(input_path, "--output-dir", output_dir)
+
+    assert result.returncode == 0
+    assert report["status"] == "ready"
+    assert report["source"]["layout"] == "column_per_sample_transposed"
+    assert report["plot"]["sample_count"] == 3
+    assert report["plot"]["group_count"] == 2
+    assert len(report["outputs"]) == 3

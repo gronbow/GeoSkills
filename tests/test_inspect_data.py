@@ -121,3 +121,36 @@ def test_user_can_select_identifier_and_group_columns(tmp_path: Path) -> None:
     assert report["status"] == "ready"
     assert report["sample_id_candidates"] == ["Code"]
     assert report["group_candidates"] == ["RockUnit"]
+
+
+def test_transposed_paper_supplement_is_adapted(tmp_path: Path) -> None:
+    input_file = tmp_path / "transposed.xlsx"
+    raw = pd.DataFrame(
+        [
+            ["Published supplementary table", None, None, None],
+            ["Rock type", "Group A", None, "Group B"],
+            ["Sample No.", "S-1", "S-2", "S-3"],
+            ["Trace element (ppm)", None, None, None],
+            ["La", 0.237, 0.474, 0.711],
+            ["Ce", 0.612, 1.224, 1.836],
+            ["Pr", 0.095, 0.190, 0.285],
+        ]
+    )
+    raw.to_excel(input_file, index=False, header=False)
+
+    result, report = run_inspector(input_file)
+
+    assert result.returncode == 0
+    assert report["status"] == "ready"
+    assert report["source"]["layout"] == "column_per_sample_transposed"
+    assert report["source"]["transformation"]["sample_header_row"] == 3
+    assert report["source"]["transformation"]["group_header_row"] == 2
+    assert report["source"]["transformation"]["inferred_unit"] == "ppm"
+    assert report["shape"] == {"rows": 3, "columns": 5}
+    assert report["sample_id_candidates"] == ["Sample"]
+    assert report["group_candidates"] == ["Group"]
+    assert [item["element"] for item in report["ree"]["recognized"]] == [
+        "La",
+        "Ce",
+        "Pr",
+    ]

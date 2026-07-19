@@ -20,6 +20,9 @@ This file records the first-release rules for data accepted by `plot-ree-pattern
 - Accept case and Unicode-subscript variants only when the mapping is unambiguous.
 - Do not treat `Sample`, `Sample ID`, or another column as the identifier without recording the choice.
 - Do not convert wt% to ppm silently.
+- Accept both a flat table with one sample per row and a published-supplement layout with one sample per column when the sample row, element-label column, and ppm section are unambiguous.
+- For an automatically transposed table, record the original sample-header row, group row, element-label column, inferred unit, and transformation method in the run report.
+- Do not rewrite the published source workbook; construct the row-per-sample representation only in memory.
 
 ## Invalid or incomplete data
 

@@ -9,12 +9,12 @@ Create reproducible REE pattern plots through a deterministic local Python workf
 
 ## Development status
 
-Treat this Skill as a functional first beta. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Continue to report caveats and inspect every generated figure visually before using it in research output.
+Treat this Skill as a functional first beta. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Both flat tables and unambiguous transposed paper supplements are supported. Continue to report caveats and inspect every generated figure visually before using it in research output.
 
 ## Workflow
 
 1. Run `scripts/check_environment.py` with the Python interpreter that will execute the plotting workflow.
-2. Run `scripts/inspect_data.py INPUT` to inspect the input file without modifying it. For a multi-sheet workbook, rerun it with `--sheet SHEET_NAME` after the user chooses a sheet.
+2. Run `scripts/inspect_data.py INPUT` to inspect the input file without modifying it. Allow the inspector to adapt an unambiguous elements-by-row paper supplement in memory. For a multi-sheet workbook, rerun it with `--sheet SHEET_NAME` after the user chooses a sheet.
 3. Identify the worksheet, sample identifier, optional group column, REE columns, and units.
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
