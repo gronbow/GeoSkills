@@ -6,7 +6,7 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 
 ## 当前进度
 
-项目目前处于“骨架建立”阶段：
+项目目前处于“数据检查器完成”阶段：
 
 - 已创建独立项目目录；
 - 已创建第一个 Skill 的标准目录；
@@ -14,6 +14,8 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 - 已加入环境检查程序；
 - 已声明运行和测试所需的 Python 组件；
 - 已加入第一个自动测试；
+- 已加入只读数据检查器，可检查 CSV、TXT 和 Excel；
+- 已加入完全虚构的 REE 示例数据；
 - 尚未加入正式标准化值和绘图程序；
 - 尚未上传 GitHub。
 
@@ -31,6 +33,7 @@ GeoSKILLS/
         ├── agents/openai.yaml        可选的 Codex/OpenAI 界面信息，不影响核心功能
         ├── scripts/                  可重复执行的 Python 程序
         ├── references/               数据规则和科学方法说明
+        ├── examples/                 可公开使用的合成示例数据
         └── assets/                   后续存放经过复核的标准化值
 ```
 
@@ -44,6 +47,18 @@ GeoSKILLS/
 - **测试（test）**：用已知输入检查程序是否得到预期结果。
 - **断言（assertion）**：测试中必须成立的条件；条件不成立时，测试失败。
 - **虚拟环境（virtual environment）**：只属于当前项目的独立 Python 工具箱，避免不同项目的组件互相影响。
+- **JSON**：一种结构清楚、既方便人读也方便程序读的文本报告格式。
+- **退出码（exit code）**：程序结束时给系统的简短信号；本项目用 0 表示通过、1 表示错误、2 表示需要人工确认。
+
+## 运行第一个真实功能
+
+在 PowerShell 中进入项目目录后运行：
+
+```powershell
+.\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\inspect_data.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv
+```
+
+程序只读取表格，并在屏幕上输出 JSON 检查报告。它目前不会计算标准化值，也不会绘图。
 
 ## 开发原则
 

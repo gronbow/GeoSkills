@@ -9,12 +9,12 @@ Create reproducible REE pattern plots through a deterministic local Python workf
 
 ## Development status
 
-Treat this Skill as an early development scaffold. The environment checker exists, but the data reader, approved normalization registry, plotting command, and scientific tests are not yet implemented. Do not claim that a research-ready figure has been generated until those components exist and pass validation.
+Treat this Skill as an early development version. The environment checker and read-only table inspector exist, but the approved normalization registry, plotting command, and scientific numerical tests are not yet implemented. Do not claim that a research-ready figure has been generated until those components exist and pass validation.
 
 ## Workflow
 
 1. Run `scripts/check_environment.py` with the Python interpreter that will execute the plotting workflow.
-2. Inspect the input file without modifying it.
+2. Run `scripts/inspect_data.py INPUT` to inspect the input file without modifying it. For a multi-sheet workbook, rerun it with `--sheet SHEET_NAME` after the user chooses a sheet.
 3. Identify the worksheet, sample identifier, optional group column, REE columns, and units.
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
@@ -37,5 +37,6 @@ Treat this Skill as an early development scaffold. The environment checker exist
 | Resource | Use it when |
 |---|---|
 | [scripts/check_environment.py](scripts/check_environment.py) | Check whether the selected Python environment contains the required packages |
+| [scripts/inspect_data.py](scripts/inspect_data.py) | Read CSV, TXT, or Excel input and produce a structured validation report |
 | [references/data-contract.md](references/data-contract.md) | Inspect columns, identifiers, units, missing values, and input errors |
 | [references/scientific-method.md](references/scientific-method.md) | Implement or audit normalization, element order, axes, and interpretation limits |
