@@ -6,7 +6,7 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 
 ## 当前进度
 
-项目目前处于“数据检查器完成”阶段：
+项目目前处于“标准化计算完成”阶段：
 
 - 已创建独立项目目录；
 - 已创建第一个 Skill 的标准目录；
@@ -16,7 +16,9 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 - 已加入第一个自动测试；
 - 已加入只读数据检查器，可检查 CSV、TXT 和 Excel；
 - 已加入完全虚构的 REE 示例数据；
-- 尚未加入正式标准化值和绘图程序；
+- 已加入 Sun & McDonough（1989）C1 球粒陨石标准化值和来源记录；
+- 已加入标准化计算程序；
+- 尚未加入绘图程序；
 - 尚未上传 GitHub。
 
 在通过数值测试和科学复核前，不把该项目描述为可用于正式科研分析的稳定版本。
@@ -34,7 +36,7 @@ GeoSKILLS/
         ├── scripts/                  可重复执行的 Python 程序
         ├── references/               数据规则和科学方法说明
         ├── examples/                 可公开使用的合成示例数据
-        └── assets/                   后续存放经过复核的标准化值
+        └── assets/                   带来源和版本信息的标准化值
 ```
 
 ## 初学者词汇
@@ -58,7 +60,15 @@ GeoSKILLS/
 .\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\inspect_data.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv
 ```
 
-程序只读取表格，并在屏幕上输出 JSON 检查报告。它目前不会计算标准化值，也不会绘图。
+程序只读取表格，并在屏幕上输出 JSON 检查报告。
+
+通过检查后，可以生成一个新的标准化结果文件：
+
+```powershell
+.\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\normalize_ree.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv --output outputs\synthetic_ree_normalized.csv
+```
+
+原始表格不会被修改。标准化结果是无量纲比值；程序目前仍不会绘图。
 
 ## 开发原则
 

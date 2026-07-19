@@ -21,7 +21,9 @@ Do not add a normalization table until all of the following are recorded:
 - complete citation and DOI where available;
 - date added and independent verification status.
 
-The first approved table has not yet been selected. Until it is added to `assets/`, plotting must stop with a clear error rather than using guessed values.
+The first selected table is `Chondrite_SM89`, stored in `assets/normalization/chondrite-sm89.json`. It contains the C1 chondrite column from Sun & McDonough (1989), Table 1, in ppm. Its DOI is `10.1144/GSL.SP.1989.042.01.19`.
+
+The source-selection decision and transcription cross-check are recorded in the asset. Its domain-level numerical review remains pending; do not describe the Skill as research-ready until that review and end-to-end figure tests are complete.
 
 ## Plot requirements
 

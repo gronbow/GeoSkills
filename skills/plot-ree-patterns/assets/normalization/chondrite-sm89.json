@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "id": "Chondrite_SM89",
+  "display_name": "C1 chondrite (Sun & McDonough, 1989)",
+  "reservoir": "C1 chondrite",
+  "normalization_kind": "chondrite",
+  "unit": "ppm",
+  "value_encoding": "decimal strings preserving the precision printed in the source table",
+  "element_order": [
+    "La",
+    "Ce",
+    "Pr",
+    "Nd",
+    "Sm",
+    "Eu",
+    "Gd",
+    "Tb",
+    "Dy",
+    "Ho",
+    "Er",
+    "Tm",
+    "Yb",
+    "Lu"
+  ],
+  "values": {
+    "La": "0.237",
+    "Ce": "0.612",
+    "Pr": "0.095",
+    "Nd": "0.467",
+    "Sm": "0.153",
+    "Eu": "0.058",
+    "Gd": "0.2055",
+    "Tb": "0.0374",
+    "Dy": "0.2540",
+    "Ho": "0.0566",
+    "Er": "0.1655",
+    "Tm": "0.0255",
+    "Yb": "0.170",
+    "Lu": "0.0254"
+  },
+  "source": {
+    "authors": [
+      "S.-s. Sun",
+      "W. F. McDonough"
+    ],
+    "year": 1989,
+    "title": "Chemical and isotopic systematics of oceanic basalts: implications for mantle composition and processes",
+    "container": "Geological Society, London, Special Publications",
+    "volume": 42,
+    "pages": "313-345",
+    "table": "Table 1, C1 chondrite column",
+    "table_page": 318,
+    "doi": "10.1144/GSL.SP.1989.042.01.19",
+    "url": "https://doi.org/10.1144/GSL.SP.1989.042.01.19",
+    "source_note": "Table 1 footnote a states that the C1 chondrite and primitive-mantle compositions are from McDonough & Sun (in prep.)."
+  },
+  "verification": {
+    "source_selection": "approved by the GeoSKILLS project owner",
+    "transcription": "checked against Sun & McDonough (1989), Table 1",
+    "cross_check": {
+      "name": "pyrolite CH_SunMcDonough1989.csv",
+      "commit": "322eaa4cb8dd147a204b5079083c836b837bdea9",
+      "url": "https://raw.githubusercontent.com/morganjwilliams/pyrolite/322eaa4cb8dd147a204b5079083c836b837bdea9/pyrolite/data/geochem/refcomp/CH_SunMcDonough1989.csv",
+      "checked_on": "2026-07-19",
+      "result": "exact match for all 14 REE values"
+    },
+    "domain_numeric_review": "pending"
+  }
+}
+

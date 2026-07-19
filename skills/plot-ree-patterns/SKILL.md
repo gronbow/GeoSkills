@@ -9,7 +9,7 @@ Create reproducible REE pattern plots through a deterministic local Python workf
 
 ## Development status
 
-Treat this Skill as an early development version. The environment checker and read-only table inspector exist, but the approved normalization registry, plotting command, and scientific numerical tests are not yet implemented. Do not claim that a research-ready figure has been generated until those components exist and pass validation.
+Treat this Skill as an early development version. The environment checker, read-only table inspector, versioned `Chondrite_SM89` reference, and tested normalization command exist. The plotting command, exported-figure tests, and final domain review are not yet complete. Do not claim that a research-ready figure has been generated until those components exist and pass validation.
 
 ## Workflow
 
@@ -18,7 +18,7 @@ Treat this Skill as an early development version. The environment checker and re
 3. Identify the worksheet, sample identifier, optional group column, REE columns, and units.
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
-6. Normalize only with a named, versioned reference composition stored in `assets/`.
+6. Run `scripts/normalize_ree.py INPUT --output OUTPUT.csv` only after inspection passes. Use the named, versioned reference composition stored in `assets/`; do not copy values into prompts or recalculate them manually.
 7. Generate PNG, SVG, and PDF from the same figure object.
 8. Return the figures with a configuration record, validation report, and concise scientific caveats.
 
@@ -38,5 +38,7 @@ Treat this Skill as an early development version. The environment checker and re
 |---|---|
 | [scripts/check_environment.py](scripts/check_environment.py) | Check whether the selected Python environment contains the required packages |
 | [scripts/inspect_data.py](scripts/inspect_data.py) | Read CSV, TXT, or Excel input and produce a structured validation report |
+| [scripts/normalize_ree.py](scripts/normalize_ree.py) | Normalize validated ppm concentrations and create a new ratio table |
+| [assets/normalization/chondrite-sm89.json](assets/normalization/chondrite-sm89.json) | Audit the exact `Chondrite_SM89` values, source, units, and verification record |
 | [references/data-contract.md](references/data-contract.md) | Inspect columns, identifiers, units, missing values, and input errors |
 | [references/scientific-method.md](references/scientific-method.md) | Implement or audit normalization, element order, axes, and interpretation limits |
