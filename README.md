@@ -18,7 +18,7 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 - 已加入完全虚构的 REE 示例数据；
 - 已加入 Sun & McDonough（1989）C1 球粒陨石标准化值和来源记录；
 - 已加入标准化计算程序；
-- 已加入 REE 配分图程序，可同时输出 PNG、SVG、PDF 和 JSON 报告；
+- 已加入投稿级 REE 配分图程序，可同时输出可编辑 SVG/PDF、600 dpi TIFF/PNG、标准化源数据 CSV 和 JSON 报告；
 - 已通过一份已发表论文补充表的真实测试，可自动读取“样品在列、元素在行”的转置式表格；
 - 尚未上传 GitHub。
 
@@ -77,7 +77,7 @@ GeoSKILLS/
 .\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\plot_ree.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv --output-dir outputs\ree_figure
 ```
 
-程序会从同一个图对象导出 PNG、SVG 和 PDF，并同步保存 JSON 运行报告。SVG 中的文字保持可编辑。
+程序会从同一个图对象导出可编辑 SVG/PDF 和 600 dpi TIFF/PNG，并同步保存标准化源数据 CSV 与 JSON 运行报告。默认采用期刊终稿尺寸、克制的色盲友好配色以及“岩石类型颜色与线型 + 样品符号”多重编码。
 
 ## 开发原则
 

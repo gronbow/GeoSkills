@@ -32,10 +32,13 @@ The source-selection decision, transcription cross-check, and project-owner doma
 - Draw a unity reference line at `y = 1`.
 - Show the normalization identifier in the axis label or figure note.
 - Preserve gaps caused by missing data; do not connect across multiple missing elements.
-- Export PNG, SVG, and PDF from the same figure object.
+- Export SVG, PDF, 600 dpi TIFF, and 600 dpi PNG from the same figure object.
+- Export the exact normalized ratios used by the figure as a source-data CSV.
 - Use Python/matplotlib with an `Agg` backend for reproducible headless export.
 - Keep SVG text editable and embed TrueType text in PDF.
-- Use group color plus sample marker/line style so color is not the only identifier.
+- Use group colour plus group line style and a unique sample symbol so colour is not the only identifier.
+- Use a white background, restrained colourblind-aware palette, thin axes, sparse major-grid guidance, and 5–8 pt text at final publication size.
+- Keep long rock-type names separate from sample IDs so the data panel is not compressed by a repetitive legend.
 - Reserve a separate legend area and warn when more than 15 samples may cause overplotting.
 
 ## Interpretation boundary

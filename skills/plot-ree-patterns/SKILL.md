@@ -1,6 +1,6 @@
 ---
 name: plot-ree-patterns
-description: Inspect whole-rock geochemical tables and create validated chondrite-normalized rare-earth-element pattern plots from CSV, TXT, or Excel data. Use when an agent needs to identify La-Lu columns, check ppm units and invalid values, group samples, generate REE diagrams, export PNG/SVG/PDF files, or explain why a geochemical table cannot yet be plotted safely.
+description: Inspect whole-rock geochemical tables and create validated, submission-ready chondrite-normalized rare-earth-element pattern plots from CSV, TXT, or Excel data. Use when an agent needs to identify La-Lu columns, check ppm units and invalid values, group samples, generate publication REE diagrams, export editable SVG/PDF plus 600 dpi TIFF/PNG and source data, or explain why a geochemical table cannot yet be plotted safely.
 ---
 
 # Plot REE Patterns
@@ -9,7 +9,7 @@ Create reproducible REE pattern plots through a deterministic local Python workf
 
 ## Development status
 
-Treat this Skill as a functional first beta. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Both flat tables and unambiguous transposed paper supplements are supported. Continue to report caveats and inspect every generated figure visually before using it in research output.
+Treat this Skill as a functional beta with a publication-oriented export workflow. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Both flat tables and unambiguous transposed paper supplements are supported. Continue to report caveats and inspect every generated figure visually at its final physical size before submission.
 
 ## Workflow
 
@@ -19,8 +19,9 @@ Treat this Skill as a functional first beta. The environment checker, read-only 
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
 6. Run `scripts/normalize_ree.py INPUT --output OUTPUT.csv` only after inspection passes. Use the named, versioned reference composition stored in `assets/`; do not copy values into prompts or recalculate them manually.
-7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate PNG, SVG, PDF, and a JSON run report from the same figure object.
-8. Return the figures with a configuration record, validation report, and concise scientific caveats.
+7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate editable SVG/PDF, 600 dpi LZW-compressed TIFF, 600 dpi PNG, normalized source-data CSV, and a JSON run report from the same figure object.
+8. Inspect the PNG or TIFF visually at the declared final size. Confirm readable text, unobstructed data, interpretable grayscale/symbol encoding, and correct legend mapping before delivery.
+9. Return the publication bundle with its configuration record, validation report, source data, and concise scientific caveats.
 
 ## Scientific guardrails
 

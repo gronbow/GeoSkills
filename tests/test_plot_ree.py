@@ -25,7 +25,7 @@ def run_plotter(*arguments: object) -> tuple[subprocess.CompletedProcess[str], d
     return result, json.loads(result.stdout)
 
 
-def test_exports_png_svg_pdf_and_report(tmp_path: Path) -> None:
+def test_exports_publication_bundle_and_report(tmp_path: Path) -> None:
     output_dir = tmp_path / "figures"
     result, report = run_plotter(
         EXAMPLE,
@@ -44,6 +44,8 @@ def test_exports_png_svg_pdf_and_report(tmp_path: Path) -> None:
     png_path = output_dir / "ree_test.png"
     svg_path = output_dir / "ree_test.svg"
     pdf_path = output_dir / "ree_test.pdf"
+    tiff_path = output_dir / "ree_test.tiff"
+    source_data_path = output_dir / "ree_test.source_data.csv"
     report_path = output_dir / "ree_test.report.json"
 
     assert result.returncode == 0
@@ -65,12 +67,25 @@ def test_exports_png_svg_pdf_and_report(tmp_path: Path) -> None:
         "Yb",
         "Lu",
     ]
-    assert {item["format"] for item in report["outputs"]} == {"png", "svg", "pdf"}
+    assert {item["format"] for item in report["outputs"]} == {
+        "png",
+        "svg",
+        "pdf",
+        "tiff",
+    }
     assert png_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert pdf_path.read_bytes().startswith(b"%PDF")
+    assert tiff_path.read_bytes()[:4] in {b"II*\x00", b"MM\x00*"}
     svg = svg_path.read_text(encoding="utf-8")
     assert "<text" in svg
-    assert "Chondrite_SM89" in svg
+    assert "C1 chondrite" in svg
+    assert "Sun &amp; McDonough (1989)" in svg
+    assert report["submission_qa"]["svg_text_editable"] is True
+    assert report["submission_qa"]["colourblind_support"]
+    assert report["source_data"]["path"] == str(source_data_path.resolve())
+    source_data = pd.read_csv(source_data_path)
+    assert source_data.columns.tolist()[:2] == ["Sample", "Group"]
+    assert "La_N" in source_data.columns
     assert json.loads(report_path.read_text(encoding="utf-8"))["status"] == "ready"
 
     image = mpimg.imread(png_path)
@@ -106,6 +121,11 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
     assert report["configuration"]["sample_column"] == "Code"
     assert report["configuration"]["group_column"] == "RockUnit"
     assert report["configuration"]["elements"] == ["La", "Ce", "Pr"]
+    assert report["configuration"]["png_dpi"] == 600
+    assert report["configuration"]["tiff_dpi"] == 600
+    assert report["plot"]["legend_strategy"] == (
+        "separate group colour/line-style and sample-symbol keys"
+    )
 
 
 def test_missing_value_is_preserved_in_line_data() -> None:
@@ -135,7 +155,11 @@ def test_missing_value_is_preserved_in_line_data() -> None:
 
         assert figure.axes[0].get_yscale() == "log"
         assert np.isnan(sample_line.get_ydata()[1])
-        assert figure.axes[0].lines[1].get_marker() != figure.axes[0].lines[2].get_marker()
+        assert (
+            figure.axes[0].lines[1].get_marker()
+            != figure.axes[0].lines[2].get_marker()
+        )
+        assert len(figure.legends) == 1
     finally:
         if "plot_ree" in sys.modules:
             sys.modules["plot_ree"].plt.close("all")
@@ -181,4 +205,5 @@ def test_transposed_published_layout_exports_figure(tmp_path: Path) -> None:
     assert report["source"]["layout"] == "column_per_sample_transposed"
     assert report["plot"]["sample_count"] == 3
     assert report["plot"]["group_count"] == 2
-    assert len(report["outputs"]) == 3
+    assert len(report["outputs"]) == 4
+    assert Path(report["source_data"]["path"]).exists()

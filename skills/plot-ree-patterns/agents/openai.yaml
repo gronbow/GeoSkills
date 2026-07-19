@@ -1,4 +1,4 @@
 interface:
   display_name: "GeoSKILLS REE Patterns"
-  short_description: "Create validated chondrite-normalized REE plots"
-  default_prompt: "Use $plot-ree-patterns to inspect my geochemical table and create a chondrite-normalized REE pattern plot."
+  short_description: "Create submission-ready chondrite-normalized REE plots"
+  default_prompt: "Use $plot-ree-patterns to inspect my geochemical table and create a submission-ready chondrite-normalized REE figure bundle."

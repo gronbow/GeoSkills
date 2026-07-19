@@ -7,6 +7,8 @@ import argparse
 import hashlib
 import json
 import sys
+import textwrap
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.lines import Line2D
 from matplotlib.ticker import LogFormatterMathtext, LogLocator
 
 from inspect_data import InspectionError, inspect_frame, issue, read_table
@@ -33,24 +36,33 @@ plt.rcParams["font.family"] = "sans-serif"
 plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans", "Liberation Sans"]
 plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["pdf.fonttype"] = 42
+plt.rcParams["font.size"] = 7
+plt.rcParams["axes.labelsize"] = 7.5
+plt.rcParams["axes.linewidth"] = 0.7
+plt.rcParams["xtick.labelsize"] = 7
+plt.rcParams["ytick.labelsize"] = 7
+plt.rcParams["xtick.major.width"] = 0.65
+plt.rcParams["ytick.major.width"] = 0.65
+plt.rcParams["xtick.minor.width"] = 0.5
+plt.rcParams["ytick.minor.width"] = 0.5
 plt.rcParams["axes.spines.right"] = False
 plt.rcParams["axes.spines.top"] = False
 plt.rcParams["legend.frameon"] = False
 
 
 GROUP_COLORS = [
-    "#0072B2",
-    "#D55E00",
-    "#009E73",
-    "#CC79A7",
-    "#6A3D9A",
-    "#8C564B",
+    "#3569A8",
+    "#D06B27",
+    "#159A80",
+    "#A84F7A",
+    "#7655A5",
+    "#8B6B4A",
     "#4D4D4D",
-    "#56B4E9",
+    "#4F9BC1",
 ]
-MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h"]
+MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h", "p", "*"]
 LINE_STYLES = ["-", "--", "-.", ":"]
-FORMATS = ("png", "svg", "pdf")
+FORMATS = ("svg", "pdf", "tiff", "png")
 
 
 class PlottingError(Exception):
@@ -102,7 +114,11 @@ def build_figure(
         group: GROUP_COLORS[index % len(GROUP_COLORS)]
         for index, group in enumerate(group_order)
     }
-    occurrence_by_group: dict[str, int] = {}
+    style_by_group = {
+        group: LINE_STYLES[index % len(LINE_STYLES)]
+        for index, group in enumerate(group_order)
+    }
+    group_counts = Counter(groups)
     skipped_samples: list[str] = []
 
     fig, ax = plt.subplots(
@@ -119,22 +135,19 @@ def build_figure(
         if not np.isfinite(y).any():
             skipped_samples.append(str(sample))
             continue
-        within_group = (
-            row_index if group_column is None else occurrence_by_group.get(group, 0)
-        )
-        occurrence_by_group[group] = within_group + 1
-        label = str(sample) if group_column is None else f"{sample} [{group}]"
         ax.plot(
             x,
             y,
             color=color_by_group[group],
-            linestyle=LINE_STYLES[(within_group // len(MARKERS)) % len(LINE_STYLES)],
-            linewidth=1.2,
-            marker=MARKERS[within_group % len(MARKERS)],
-            markersize=3.8,
+            linestyle=style_by_group[group],
+            linewidth=1.05,
+            marker=MARKERS[row_index % len(MARKERS)],
+            markersize=3.6,
             markeredgecolor="white",
-            markeredgewidth=0.45,
-            label=label,
+            markeredgewidth=0.4,
+            label="_nolegend_",
+            solid_capstyle="round",
+            solid_joinstyle="round",
             zorder=2,
         )
 
@@ -146,51 +159,119 @@ def build_figure(
     ax.set_xlim(-0.4, len(elements) - 0.6)
     ax.set_xticks(x)
     ax.set_xticklabels(elements)
-    ax.set_xlabel("Rare-earth element", fontsize=8)
-    ax.set_ylabel(f"Sample / C1 chondrite\n({reference_id})", fontsize=8)
-    ax.tick_params(axis="both", labelsize=7, width=0.7, length=3)
+    # Element symbols already define the categorical x axis; omitting a repeated
+    # x-axis title preserves space and improves readability after journal scaling.
+    ax.set_xlabel("")
+    ax.set_ylabel("Sample / C1 chondrite")
+    ax.tick_params(axis="both", which="major", direction="out", length=3)
+    ax.tick_params(axis="y", which="minor", direction="out", length=1.8)
     ax.yaxis.set_major_locator(LogLocator(base=10))
     ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10))
     ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
-    ax.grid(which="major", axis="y", color="#D9D9D9", linewidth=0.55)
-    ax.grid(which="minor", axis="y", color="#EEEEEE", linewidth=0.35)
+    ax.set_axisbelow(True)
+    ax.grid(which="major", axis="y", color="#D7D7D7", linewidth=0.45)
     for spine in ("left", "bottom"):
-        ax.spines[spine].set_linewidth(0.8)
+        ax.spines[spine].set_linewidth(0.7)
     if title:
-        ax.set_title(title, fontsize=9, pad=7)
+        ax.set_title(title, fontsize=8.5, fontweight="bold", loc="left", pad=7)
 
-    handles, labels = ax.get_legend_handles_labels()
-    fig.legend(
-        handles,
-        labels,
-        loc="center right",
-        bbox_to_anchor=(0.985, 0.54),
-        fontsize=6.5,
-        title="Samples" if group_column is None else f"Samples [{group_column}]",
-        title_fontsize=7,
-        handlelength=2.2,
-        labelspacing=0.55,
-    )
+    sample_handles = [
+        Line2D(
+            [0],
+            [0],
+            color=(color_by_group[group] if group_column is None else "#555555"),
+            linewidth=0.9,
+            linestyle=(style_by_group[group] if group_column is None else "None"),
+            marker=MARKERS[index % len(MARKERS)],
+            markersize=3.8,
+            markerfacecolor=(color_by_group[group] if group_column is None else "#555555"),
+            markeredgecolor="white",
+            markeredgewidth=0.35,
+        )
+        for index, group in enumerate(groups)
+    ]
+    if group_column is None:
+        fig.legend(
+            sample_handles,
+            [str(sample) for sample in samples],
+            loc="upper left",
+            bbox_to_anchor=(0.755, 0.91),
+            fontsize=6.2,
+            title="Sample ID",
+            title_fontsize=6.6,
+            handlelength=1.6,
+            labelspacing=0.45,
+            borderaxespad=0,
+        )
+    else:
+        group_handles = [
+            Line2D(
+                [0],
+                [0],
+                color=color_by_group[group],
+                linewidth=1.6,
+                linestyle=style_by_group[group],
+            )
+            for group in group_order
+        ]
+        group_labels = [
+            textwrap.fill(f"{group} (n={group_counts[group]})", width=26)
+            for group in group_order
+        ]
+        fig.legend(
+            group_handles,
+            group_labels,
+            loc="upper left",
+            bbox_to_anchor=(0.755, 0.91),
+            fontsize=6.1,
+            title="Rock type" if str(group_column).casefold() == "group" else str(group_column),
+            title_fontsize=6.6,
+            handlelength=1.8,
+            labelspacing=0.5,
+            borderaxespad=0,
+        )
+        fig.legend(
+            sample_handles,
+            [str(sample) for sample in samples],
+            loc="upper left",
+            bbox_to_anchor=(0.755, 0.57),
+            fontsize=6.1,
+            title="Sample ID (symbol)",
+            title_fontsize=6.6,
+            handlelength=1.35,
+            labelspacing=0.45,
+            columnspacing=0.8,
+            ncol=2 if len(samples) >= 6 else 1,
+            borderaxespad=0,
+        )
     fig.text(
-        0.11,
-        0.035,
-        "Normalization: Sun & McDonough (1989), Table 1; dashed line = unity.",
-        fontsize=6,
+        0.095,
+        0.045,
+        "Normalization: Sun & McDonough (1989) C1 chondrite; dashed line = unity.",
+        fontsize=5.8,
         color="#4D4D4D",
         ha="left",
     )
     fig.subplots_adjust(
-        left=0.11,
-        right=0.72,
-        bottom=0.17,
+        left=0.095,
+        right=0.73,
+        bottom=0.16,
         top=0.90 if title else 0.95,
     )
     return fig, {
+        "normalization_id": reference_id,
         "sample_count": len(samples),
         "group_count": len(group_order),
         "group_column": group_column,
         "skipped_samples": skipped_samples,
         "palette_repeated": len(group_order) > len(GROUP_COLORS),
+        "line_style_repeated": len(group_order) > len(LINE_STYLES),
+        "legend_strategy": "separate group colour/line-style and sample-symbol keys"
+        if group_column is not None
+        else "sample key",
+        "colour_is_not_the_only_identifier": True,
+        "group_encoding": "colour plus line style",
+        "sample_encoding": "unique symbol",
     }
 
 
@@ -203,11 +284,12 @@ def file_record(path: Path) -> dict[str, Any]:
     }
 
 
-def output_targets(output_dir: Path, stem: str) -> tuple[list[Path], Path]:
+def output_targets(output_dir: Path, stem: str) -> tuple[list[Path], Path, Path]:
     if not stem or Path(stem).name != stem or Path(stem).suffix:
         raise PlottingError("输出名称必须是不含路径和扩展名的文件名。")
     figures = [output_dir / f"{stem}.{extension}" for extension in FORMATS]
-    return figures, output_dir / f"{stem}.report.json"
+    source_data = output_dir / f"{stem}.source_data.csv"
+    return figures, source_data, output_dir / f"{stem}.report.json"
 
 
 def plotting_error(path: Path, message: str) -> dict[str, Any]:
@@ -230,18 +312,24 @@ def plot_path(
     title: str | None = None,
     width_mm: float = 183.0,
     height_mm: float = 120.0,
-    dpi: int = 300,
+    dpi: int = 600,
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
 ) -> dict[str, Any]:
-    """Validate raw input and export PNG, SVG, and PDF from one figure."""
+    """Validate input and export a publication figure bundle from one figure."""
     figure = None
     try:
         if not 72 <= dpi <= 1200:
-            raise PlottingError("PNG 分辨率必须在 72–1200 dpi 之间。")
+            raise PlottingError("PNG/TIFF 分辨率必须在 72–1200 dpi 之间。")
         resolved_stem = stem or f"{input_path.stem}_ree_pattern"
-        figure_paths, report_path = output_targets(output_dir, resolved_stem)
-        existing = [path for path in [*figure_paths, report_path] if path.exists()]
+        figure_paths, source_data_path, report_path = output_targets(
+            output_dir, resolved_stem
+        )
+        existing = [
+            path
+            for path in [*figure_paths, source_data_path, report_path]
+            if path.exists()
+        ]
         if existing and not overwrite:
             raise PlottingError(
                 "输出文件已经存在；如需替换，请显式使用 --overwrite。"
@@ -318,9 +406,21 @@ def plot_path(
         output_dir.mkdir(parents=True, exist_ok=True)
         for path in figure_paths:
             save_options: dict[str, Any] = {"facecolor": "white"}
-            if path.suffix.lower() == ".png":
+            if path.suffix.lower() in {".png", ".tiff"}:
                 save_options["dpi"] = dpi
+            if path.suffix.lower() == ".tiff":
+                save_options["pil_kwargs"] = {"compression": "tiff_lzw"}
             figure.savefig(path, **save_options)
+        source_columns = [sample_column]
+        if group_column is not None:
+            source_columns.append(group_column)
+        source_columns.extend(f"{element}_N" for element in elements)
+        normalized.loc[:, source_columns].to_csv(
+            source_data_path,
+            index=False,
+            encoding="utf-8",
+            float_format="%.8g",
+        )
         plt.close(figure)
         figure = None
 
@@ -343,6 +443,15 @@ def plot_path(
                     group_count=plot_info["group_count"],
                 )
             )
+        if plot_info["line_style_repeated"]:
+            run_issues.append(
+                issue(
+                    "W504",
+                    "warning",
+                    "分组数量超过基础线型数量，灰度打印时部分组可能难以区分；建议按组分图。",
+                    group_count=plot_info["group_count"],
+                )
+            )
         if plot_info["skipped_samples"]:
             run_issues.append(
                 issue(
@@ -359,15 +468,18 @@ def plot_path(
             "source": source,
             "reference": reference_summary(reference_path, reference),
             "figure_contract": {
-                "core_conclusion": "Display relative REE enrichment, depletion, slopes, and visible anomalies without assigning a unique petrogenetic cause.",
-                "archetype": "single-panel quantitative pattern plot",
+                "core_conclusion": "Show the relative REE enrichment, depletion, slopes, and visible anomalies among samples and rock groups without assigning a unique petrogenetic cause.",
+                "archetype": "single-panel quantitative figure",
                 "backend": "Python/matplotlib",
+                "role": "comparative evidence",
                 "evidence": "Sample-to-Chondrite_SM89 ratios across ordered La-Lu elements",
+                "target_output": "double-column publication figure",
                 "review_risks": [
                     "log-axis invalid values",
                     "missing-value connections",
                     "overplotting and legend crowding",
                     "editable vector text",
+                    "colour-only identification",
                 ],
             },
             "configuration": {
@@ -379,10 +491,22 @@ def plot_path(
                 "width_mm": width_mm,
                 "height_mm": height_mm,
                 "png_dpi": dpi,
+                "tiff_dpi": dpi,
                 "formats": list(FORMATS),
             },
             "plot": plot_info,
             "outputs": [file_record(path) for path in figure_paths],
+            "source_data": file_record(source_data_path),
+            "submission_qa": {
+                "final_size_mm": [width_mm, height_mm],
+                "svg_text_editable": True,
+                "pdf_font_type": 42,
+                "raster_dpi": dpi,
+                "tiff_compression": "LZW",
+                "white_background": True,
+                "colourblind_support": "group colour plus line style; unique sample symbol",
+                "source_data_exported": True,
+            },
             "report_file": str(report_path.resolve()),
             "issues": run_issues,
             "interpretation_guidance": [
@@ -419,7 +543,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--title", help="可选图题；论文图通常留空并使用图注")
     parser.add_argument("--width-mm", type=float, default=183.0, help="图宽，默认 183 mm")
     parser.add_argument("--height-mm", type=float, default=120.0, help="图高，默认 120 mm")
-    parser.add_argument("--dpi", type=int, default=300, help="PNG 分辨率，默认 300 dpi")
+    parser.add_argument(
+        "--dpi", type=int, default=600, help="PNG/TIFF 分辨率，默认 600 dpi"
+    )
     parser.add_argument(
         "--overwrite",
         action="store_true",
