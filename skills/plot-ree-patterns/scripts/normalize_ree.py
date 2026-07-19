@@ -127,6 +127,8 @@ def normalize_path(
     output_path: Path,
     requested_sheet: str | None = None,
     overwrite: bool = False,
+    requested_sample_column: str | None = None,
+    requested_group_column: str | None = None,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
 ) -> dict[str, Any]:
     """Inspect, normalize, and write a new CSV without changing the source."""
@@ -156,7 +158,12 @@ def normalize_path(
                 ],
             }
 
-        inspection = inspect_frame(frame, source)
+        inspection = inspect_frame(
+            frame,
+            source,
+            requested_sample_column,
+            requested_group_column,
+        )
         if inspection["status"] != "ready":
             return {
                 "status": "blocked",
@@ -212,6 +219,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("input", type=Path, help="已满足数据规则的输入表格")
     parser.add_argument("--output", type=Path, required=True, help="新建的标准化 CSV 文件")
     parser.add_argument("--sheet", help="Excel 工作表名称，或从 0 开始的编号")
+    parser.add_argument("--sample-column", help="明确指定样品编号列")
+    parser.add_argument("--group-column", help="明确指定可选的分组列")
     parser.add_argument(
         "--overwrite",
         action="store_true",
@@ -226,7 +235,14 @@ def main() -> int:
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
     args = parse_args()
-    report = normalize_path(args.input, args.output, args.sheet, args.overwrite)
+    report = normalize_path(
+        args.input,
+        args.output,
+        args.sheet,
+        args.overwrite,
+        args.sample_column,
+        args.group_column,
+    )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
     print(f"REE 标准化完成：{report['status']}", file=sys.stderr)
@@ -239,4 +255,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

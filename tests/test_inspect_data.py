@@ -100,3 +100,24 @@ def test_multiple_excel_sheets_need_an_explicit_choice(tmp_path: Path) -> None:
     assert selected_result.returncode == 0
     assert selected_report["status"] == "ready"
     assert selected_report["source"]["sheet"] == "Data"
+
+
+def test_user_can_select_identifier_and_group_columns(tmp_path: Path) -> None:
+    input_file = tmp_path / "custom_columns.csv"
+    input_file.write_text(
+        "Code,RockUnit,La_ppm,Ce_ppm,Pr_ppm\nA-1,Granite,1,2,3\n",
+        encoding="utf-8",
+    )
+
+    result, report = run_inspector(
+        input_file,
+        "--sample-column",
+        "Code",
+        "--group-column",
+        "RockUnit",
+    )
+
+    assert result.returncode == 0
+    assert report["status"] == "ready"
+    assert report["sample_id_candidates"] == ["Code"]
+    assert report["group_candidates"] == ["RockUnit"]

@@ -202,17 +202,51 @@ def problem_examples(
     return examples
 
 
-def inspect_frame(frame: pd.DataFrame, source: dict[str, Any]) -> dict[str, Any]:
+def inspect_frame(
+    frame: pd.DataFrame,
+    source: dict[str, Any],
+    requested_sample_column: str | None = None,
+    requested_group_column: str | None = None,
+) -> dict[str, Any]:
     """Inspect identifiers, REE mappings, units, and invalid cell states."""
     columns = [str(column) for column in frame.columns]
-    sample_candidates = [column for column in frame.columns if clean_name(column) in SAMPLE_NAMES]
-    group_candidates = [column for column in frame.columns if clean_name(column) in GROUP_NAMES]
+    automatic_sample_candidates = [
+        column for column in frame.columns if clean_name(column) in SAMPLE_NAMES
+    ]
+    automatic_group_candidates = [
+        column for column in frame.columns if clean_name(column) in GROUP_NAMES
+    ]
+    requested_sample_matches = [
+        column for column in frame.columns if str(column) == requested_sample_column
+    ]
+    requested_group_matches = [
+        column for column in frame.columns if str(column) == requested_group_column
+    ]
+    sample_candidates = (
+        requested_sample_matches
+        if requested_sample_column is not None
+        else automatic_sample_candidates
+    )
+    group_candidates = (
+        requested_group_matches
+        if requested_group_column is not None
+        else automatic_group_candidates
+    )
     sample_column = sample_candidates[0] if len(sample_candidates) == 1 else None
     issues: list[dict[str, Any]] = []
 
     if frame.empty:
         issues.append(issue("E101", "error", "表格没有数据行。"))
-    if not sample_candidates:
+    if requested_sample_column is not None and len(requested_sample_matches) != 1:
+        issues.append(
+            issue(
+                "E206",
+                "error",
+                "指定的样品编号列不存在或不唯一。",
+                requested=requested_sample_column,
+            )
+        )
+    elif not sample_candidates:
         issues.append(issue("E201", "review", "未自动识别样品编号列，请明确指定。"))
     elif len(sample_candidates) > 1:
         issues.append(
@@ -221,6 +255,16 @@ def inspect_frame(frame: pd.DataFrame, source: dict[str, Any]) -> dict[str, Any]
                 "review",
                 "识别到多个可能的样品编号列，请确认使用哪一列。",
                 columns=[str(column) for column in sample_candidates],
+            )
+        )
+
+    if requested_group_column is not None and len(requested_group_matches) != 1:
+        issues.append(
+            issue(
+                "E207",
+                "error",
+                "指定的分组列不存在或不唯一。",
+                requested=requested_group_column,
             )
         )
 
@@ -388,7 +432,12 @@ def error_report(path: Path, message: str) -> dict[str, Any]:
     }
 
 
-def inspect_path(path: Path, requested_sheet: str | None = None) -> dict[str, Any]:
+def inspect_path(
+    path: Path,
+    requested_sheet: str | None = None,
+    requested_sample_column: str | None = None,
+    requested_group_column: str | None = None,
+) -> dict[str, Any]:
     """Public function used by the CLI and automated tests."""
     try:
         frame, source = read_table(path, requested_sheet)
@@ -405,7 +454,12 @@ def inspect_path(path: Path, requested_sheet: str | None = None) -> dict[str, An
                     )
                 ],
             }
-        return inspect_frame(frame, source)
+        return inspect_frame(
+            frame,
+            source,
+            requested_sample_column,
+            requested_group_column,
+        )
     except InspectionError as exc:
         return error_report(path, str(exc))
 
@@ -414,6 +468,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="只读检查地球化学 REE 数据表，并输出 JSON 报告。")
     parser.add_argument("input", type=Path, help=".csv、.txt 或 .xlsx 输入文件")
     parser.add_argument("--sheet", help="Excel 工作表名称，或从 0 开始的编号")
+    parser.add_argument("--sample-column", help="明确指定样品编号列")
+    parser.add_argument("--group-column", help="明确指定可选的分组列")
     return parser.parse_args()
 
 
@@ -424,7 +480,12 @@ def main() -> int:
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8")
     args = parse_args()
-    report = inspect_path(args.input, args.sheet)
+    report = inspect_path(
+        args.input,
+        args.sheet,
+        args.sample_column,
+        args.group_column,
+    )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
     print(f"数据检查完成：{report['status']}", file=sys.stderr)

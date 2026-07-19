@@ -64,7 +64,10 @@
       "checked_on": "2026-07-19",
       "result": "exact match for all 14 REE values"
     },
-    "domain_numeric_review": "pending"
+    "domain_numeric_review": {
+      "status": "confirmed",
+      "confirmed_by": "GeoSKILLS project owner",
+      "confirmed_on": "2026-07-19"
+    }
   }
 }
-

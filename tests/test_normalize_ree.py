@@ -51,6 +51,7 @@ def test_sm89_reference_matches_source_fixture() -> None:
     assert reference["source"]["doi"] == "10.1144/GSL.SP.1989.042.01.19"
     assert reference["element_order"] == list(EXPECTED_SM89)
     assert reference["values"] == EXPECTED_SM89
+    assert reference["verification"]["domain_numeric_review"]["status"] == "confirmed"
 
 
 def test_ten_times_reference_normalizes_to_ten(tmp_path: Path) -> None:
@@ -128,4 +129,3 @@ def test_existing_output_is_not_silently_replaced(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert report["status"] == "error"
     assert output_path.read_text(encoding="utf-8") == "keep me\n"
-

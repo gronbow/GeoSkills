@@ -23,7 +23,7 @@ Do not add a normalization table until all of the following are recorded:
 
 The first selected table is `Chondrite_SM89`, stored in `assets/normalization/chondrite-sm89.json`. It contains the C1 chondrite column from Sun & McDonough (1989), Table 1, in ppm. Its DOI is `10.1144/GSL.SP.1989.042.01.19`.
 
-The source-selection decision and transcription cross-check are recorded in the asset. Its domain-level numerical review remains pending; do not describe the Skill as research-ready until that review and end-to-end figure tests are complete.
+The source-selection decision, transcription cross-check, and project-owner domain confirmation are recorded in the asset.
 
 ## Plot requirements
 
@@ -33,6 +33,10 @@ The source-selection decision and transcription cross-check are recorded in the 
 - Show the normalization identifier in the axis label or figure note.
 - Preserve gaps caused by missing data; do not connect across multiple missing elements.
 - Export PNG, SVG, and PDF from the same figure object.
+- Use Python/matplotlib with an `Agg` backend for reproducible headless export.
+- Keep SVG text editable and embed TrueType text in PDF.
+- Use group color plus sample marker/line style so color is not the only identifier.
+- Reserve a separate legend area and warn when more than 15 samples may cause overplotting.
 
 ## Interpretation boundary
 

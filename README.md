@@ -6,7 +6,7 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 
 ## 当前进度
 
-项目目前处于“标准化计算完成”阶段：
+项目目前处于“第一版完整绘图流程完成”阶段：
 
 - 已创建独立项目目录；
 - 已创建第一个 Skill 的标准目录；
@@ -18,7 +18,7 @@ GeoSKILLS 是一个面向地质学与地球化学工作的开放 Agent Skills �
 - 已加入完全虚构的 REE 示例数据；
 - 已加入 Sun & McDonough（1989）C1 球粒陨石标准化值和来源记录；
 - 已加入标准化计算程序；
-- 尚未加入绘图程序；
+- 已加入 REE 配分图程序，可同时输出 PNG、SVG、PDF 和 JSON 报告；
 - 尚未上传 GitHub。
 
 在通过数值测试和科学复核前，不把该项目描述为可用于正式科研分析的稳定版本。
@@ -68,7 +68,15 @@ GeoSKILLS/
 .\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\normalize_ree.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv --output outputs\synthetic_ree_normalized.csv
 ```
 
-原始表格不会被修改。标准化结果是无量纲比值；程序目前仍不会绘图。
+原始表格不会被修改。标准化结果是无量纲比值。
+
+直接生成第一张 REE 配分图：
+
+```powershell
+.\.venv\Scripts\python.exe skills\plot-ree-patterns\scripts\plot_ree.py skills\plot-ree-patterns\examples\synthetic_ree_data.csv --output-dir outputs\ree_figure
+```
+
+程序会从同一个图对象导出 PNG、SVG 和 PDF，并同步保存 JSON 运行报告。SVG 中的文字保持可编辑。
 
 ## 开发原则
 
