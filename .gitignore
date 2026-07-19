@@ -1,0 +1,19 @@
+# Python temporary files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local Python environments
+.venv/
+venv/
+
+# Local/private data and generated output
+local_data/
+outputs/
+tmp/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
