@@ -126,7 +126,9 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
     assert report["configuration"]["png_dpi"] == 600
     assert report["configuration"]["tiff_dpi"] == 600
     assert report["configuration"]["y_margin_fraction"] == 0.05
-    assert report["configuration"]["y_limit_policy"] == "adaptive_log10"
+    assert report["configuration"]["y_limit_policy"] == (
+        "adaptive_log10_nice_integer_bounds"
+    )
     assert report["plot"]["legend_strategy"] == (
         "separate group colour/line-style and sample-symbol keys"
     )
@@ -197,11 +199,18 @@ def test_adaptive_log_limits_remove_empty_unity_decade() -> None:
         lower, upper = figure.axes[0].get_ylim()
 
         assert plot_info["unity_line_visible"] is False
-        assert plot_info["y_limits"]["policy"] == "adaptive_log10"
-        assert 1.0 < lower < 11.3
-        assert upper > 1004.2
-        assert lower / 11.3 > 0.5
-        assert upper / 1004.2 < 2.0
+        assert plot_info["y_limits"]["policy"] == (
+            "adaptive_log10_nice_integer_bounds"
+        )
+        assert lower == 10.0
+        assert upper == 1500.0
+        assert plot_info["y_limits"]["adaptive_lower"] < lower < 11.3
+        assert upper > plot_info["y_limits"]["adaptive_upper"]
+        assert plot_info["y_limits"]["rounding"] == {
+            "policy": "nice_integer_bounds",
+            "lower_step": 10.0,
+            "upper_step": 100.0,
+        }
         assert len(figure.axes[0].lines) == 2
     finally:
         if "plot_ree" in sys.modules:

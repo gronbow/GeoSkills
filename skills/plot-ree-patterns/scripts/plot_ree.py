@@ -104,6 +104,34 @@ def adaptive_log_y_limits(
     )
 
 
+def nice_integer_log_y_limits(
+    adaptive_lower: float,
+    adaptive_upper: float,
+    data_min: float,
+) -> tuple[float, float, float, float]:
+    """Round adaptive log limits to readable bounds without clipping data.
+
+    Use the actual data minimum as the lower-bound safety check. This lets an
+    adaptive lower margin of 7.89 become 10 when the first real value is 11.29,
+    while still preserving a clean integer edge and every plotted data point.
+    """
+    lower_step = max(1.0, 10 ** np.floor(np.log10(data_min)))
+    lower = float(np.floor(data_min / lower_step) * lower_step)
+    if np.isclose(lower, data_min):
+        lower = lower_step / 2.0
+    if lower <= 0:
+        lower = lower_step
+
+    upper_step = max(1.0, 10 ** (np.floor(np.log10(adaptive_upper)) - 1))
+    upper = float(np.ceil(adaptive_upper / upper_step) * upper_step)
+
+    if not lower < data_min:
+        raise PlottingError("无法在不裁切数据的情况下确定整洁的纵坐标下限。")
+    if not upper > adaptive_upper:
+        upper += upper_step
+    return lower, upper, float(lower_step), float(upper_step)
+
+
 def parse_element_selection(selection: str | None, available: list[str]) -> list[str]:
     """Resolve a comma-separated REE selection in canonical order."""
     if selection is None:
@@ -165,12 +193,15 @@ def build_figure(
     value_columns = [f"{element}_N" for element in elements]
     all_values = normalized.loc[:, value_columns].to_numpy(dtype=float)
     (
-        y_lower,
-        y_upper,
+        adaptive_lower,
+        adaptive_upper,
         data_min,
         data_max,
         margin_decades,
     ) = adaptive_log_y_limits(all_values, y_margin)
+    y_lower, y_upper, lower_rounding_step, upper_rounding_step = (
+        nice_integer_log_y_limits(adaptive_lower, adaptive_upper, data_min)
+    )
     unity_line_visible = y_lower <= 1.0 <= y_upper
 
     ax.set_yscale("log")
@@ -300,7 +331,7 @@ def build_figure(
     if unity_line_visible:
         reference_note += "; dashed line = unity."
     else:
-        reference_note += "; limits adapt to positive normalized data."
+        reference_note += "; limits adapt and round to clean integer bounds."
     fig.text(
         0.095,
         0.045,
@@ -320,11 +351,18 @@ def build_figure(
         "y_limits": {
             "lower": y_lower,
             "upper": y_upper,
+            "adaptive_lower": adaptive_lower,
+            "adaptive_upper": adaptive_upper,
             "data_min": data_min,
             "data_max": data_max,
             "margin_fraction": y_margin,
             "margin_decades": margin_decades,
-            "policy": "adaptive_log10",
+            "rounding": {
+                "policy": "nice_integer_bounds",
+                "lower_step": lower_rounding_step,
+                "upper_step": upper_rounding_step,
+            },
+            "policy": "adaptive_log10_nice_integer_bounds",
         },
         "unity_line_visible": unity_line_visible,
         "sample_count": len(samples),

@@ -29,7 +29,7 @@ The source-selection decision, transcription cross-check, and project-owner doma
 
 - Use the conventional La-to-Lu order without Pm.
 - Use a logarithmic normalized-concentration axis.
-- Derive the y-axis range from the finite, positive normalized values. Use an 8% default margin in log space, with at least an 8% proportional margin for narrow ranges; record the resulting limits in the run report.
+- Derive the y-axis range from the finite, positive normalized values. Use an 8% default margin in log space, with at least an 8% proportional margin for narrow ranges; then round the lower and upper display bounds to clean integer values. Use the actual data minimum as a safety check so the rounded lower bound never clips a point, and record both adaptive and final limits in the run report.
 - Draw a unity reference line at `y = 1` only when it lies inside the adaptive display range. When it is outside the range, retain the normalization source in the figure note and do not add an empty decade solely to show the line.
 - Show the normalization identifier in the axis label or figure note.
 - Preserve gaps caused by missing data; do not connect across multiple missing elements.
