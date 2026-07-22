@@ -132,6 +132,8 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
     assert report["plot"]["legend_strategy"] == (
         "separate group colour/line-style and sample-symbol keys"
     )
+    assert report["configuration"]["axes_frame"] == "open"
+    assert report["configuration"]["legend_layout"] == "outside"
 
 
 def test_missing_value_is_preserved_in_line_data() -> None:
@@ -212,6 +214,99 @@ def test_adaptive_log_limits_remove_empty_unity_decade() -> None:
             "upper_step": 100.0,
         }
         assert len(figure.axes[0].lines) == 2
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_full_frame_inside_auto_legend_avoids_data() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["S1", "S2", "S3", "S4", "S5", "S6"],
+                "Group": ["A", "A", "B", "B", "C", "C"],
+                "La_N": [850.0, 720.0, 550.0, 470.0, 390.0, 320.0],
+                "Ce_N": [600.0, 520.0, 380.0, 330.0, 280.0, 230.0],
+                "Pr_N": [360.0, 320.0, 240.0, 210.0, 180.0, 150.0],
+                "Nd_N": [220.0, 190.0, 145.0, 125.0, 105.0, 88.0],
+                "Sm_N": [105.0, 90.0, 70.0, 60.0, 50.0, 42.0],
+                "Eu_N": [80.0, 70.0, 55.0, 48.0, 40.0, 34.0],
+                "Gd_N": [66.0, 58.0, 45.0, 40.0, 32.0, 28.0],
+                "Tb_N": [55.0, 48.0, 38.0, 33.0, 27.0, 23.0],
+                "Dy_N": [46.0, 40.0, 31.0, 27.0, 22.0, 19.0],
+                "Ho_N": [38.0, 33.0, 26.0, 23.0, 19.0, 16.0],
+                "Er_N": [32.0, 28.0, 22.0, 19.0, 16.0, 14.0],
+                "Tm_N": [28.0, 24.0, 19.0, 17.0, 14.0, 12.0],
+                "Yb_N": [24.0, 21.0, 17.0, 15.0, 13.0, 11.0],
+                "Lu_N": [21.0, 18.0, 15.0, 13.0, 11.5, 10.5],
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            ["La", "Ce", "Pr", "Nd", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu"],
+            "Chondrite_SM89",
+            width_mm=183,
+            height_mm=120,
+            axes_frame="full",
+            legend_layout="inside-auto",
+        )
+        axes = figure.axes[0]
+
+        assert axes.spines["top"].get_visible() is True
+        assert axes.spines["right"].get_visible() is True
+        assert plot_info["axes_frame"] == "full"
+        assert plot_info["legend_layout_requested"] == "inside-auto"
+        assert plot_info["legend_position"] == "inside_upper_right"
+        assert plot_info["legend_fallback"] is False
+        assert plot_info["legend_collision_free"] is True
+        assert plot_info["inside_legend_collision_free"] is True
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_inside_auto_legend_falls_back_when_data_fill_the_axes() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        elements = ["La", "Ce", "Pr", "Nd", "Sm", "Eu", "Gd"]
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["S1", "S2", "S3", "S4"],
+                "Group": ["A", "A", "B", "B"],
+                **{
+                    f"{element}_N": [1000.0, 930.0, 860.0, 790.0]
+                    for element in elements
+                },
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            elements,
+            "Chondrite_SM89",
+            width_mm=183,
+            height_mm=120,
+            axes_frame="full",
+            legend_layout="inside-auto",
+        )
+
+        assert plot_info["legend_position"] == "outside_right_fallback"
+        assert plot_info["legend_fallback"] is True
+        assert plot_info["legend_collision_free"] is True
+        assert plot_info["inside_legend_collision_free"] is False
+        assert len(figure.legends) == 2
     finally:
         if "plot_ree" in sys.modules:
             sys.modules["plot_ree"].plt.close("all")

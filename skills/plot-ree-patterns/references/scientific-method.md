@@ -39,8 +39,8 @@ The source-selection decision, transcription cross-check, and project-owner doma
 - Keep SVG text editable and embed TrueType text in PDF.
 - Use group colour plus group line style and a unique sample symbol so colour is not the only identifier.
 - Use a white background, restrained colourblind-aware palette, thin axes, sparse major-grid guidance, and 5–8 pt text at final publication size.
-- Keep long rock-type names separate from sample IDs so the data panel is not compressed by a repetitive legend.
-- Reserve a separate legend area and warn when more than 15 samples may cause overplotting.
+- Keep long rock-type names separate from sample IDs so the data panel is not compressed by a repetitive legend. When an in-axes key is requested, use a light boxed key only after checking that it does not intersect plotted paths or symbols.
+- Allow an optional full four-sided axes frame without adding redundant top or right tick labels. Fall back to a separate right-side legend if no clear in-axes region exists, and warn when more than 15 samples may cause overplotting.
 
 ## Interpretation boundary
 

@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.lines import Line2D
+from matplotlib.path import Path as MatplotlibPath
 from matplotlib.ticker import LogFormatterMathtext, LogLocator
 
 from inspect_data import InspectionError, inspect_frame, issue, read_table
@@ -64,6 +65,8 @@ MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h", "p", "*"]
 LINE_STYLES = ["-", "--", "-.", ":"]
 FORMATS = ("svg", "pdf", "tiff", "png")
 DEFAULT_LOG_Y_MARGIN = 0.08
+AXES_FRAMES = ("open", "full")
+LEGEND_LAYOUTS = ("outside", "inside-auto")
 
 
 class PlottingError(Exception):
@@ -132,6 +135,61 @@ def nice_integer_log_y_limits(
     return lower, upper, float(lower_step), float(upper_step)
 
 
+def configure_boxed_legend(legend: Any) -> None:
+    """Apply a restrained white legend box suitable for an in-axes key."""
+    legend.set_zorder(10)
+    frame = legend.get_frame()
+    frame.set_facecolor("white")
+    frame.set_edgecolor("#A8A8A8")
+    frame.set_linewidth(0.5)
+    frame.set_alpha(0.96)
+
+
+def legends_overlap_data(
+    ax: Any,
+    data_lines: list[Line2D],
+    legends: list[Any],
+) -> bool:
+    """Return whether legend boxes overlap each other or a plotted data path."""
+    ax.figure.canvas.draw()
+    renderer = ax.figure.canvas.get_renderer()
+    boxes = [legend.get_window_extent(renderer).expanded(1.02, 1.08) for legend in legends]
+
+    for index, box in enumerate(boxes):
+        if any(box.overlaps(other) for other in boxes[index + 1 :]):
+            return True
+
+    for line in data_lines:
+        x_values = np.asarray(line.get_xdata(), dtype=float)
+        y_values = np.asarray(line.get_ydata(), dtype=float)
+        finite = np.isfinite(x_values) & np.isfinite(y_values) & (y_values > 0)
+        finite_indices = np.flatnonzero(finite)
+        if finite_indices.size == 0:
+            continue
+        splits = np.split(
+            finite_indices,
+            np.where(np.diff(finite_indices) != 1)[0] + 1,
+        )
+        for indices in splits:
+            coordinates = ax.transData.transform(
+                np.column_stack((x_values[indices], y_values[indices]))
+            )
+            for box in boxes:
+                points_inside = (
+                    (coordinates[:, 0] >= box.x0)
+                    & (coordinates[:, 0] <= box.x1)
+                    & (coordinates[:, 1] >= box.y0)
+                    & (coordinates[:, 1] <= box.y1)
+                )
+                if points_inside.any():
+                    return True
+                if len(coordinates) > 1 and MatplotlibPath(coordinates).intersects_bbox(
+                    box, filled=False
+                ):
+                    return True
+    return False
+
+
 def parse_element_selection(selection: str | None, available: list[str]) -> list[str]:
     """Resolve a comma-separated REE selection in canonical order."""
     if selection is None:
@@ -161,10 +219,16 @@ def build_figure(
     width_mm: float = 183.0,
     height_mm: float = 120.0,
     y_margin: float = DEFAULT_LOG_Y_MARGIN,
+    axes_frame: str = "open",
+    legend_layout: str = "outside",
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
     if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
         raise PlottingError("图像宽度和高度必须在 50–400 mm 之间。")
+    if axes_frame not in AXES_FRAMES:
+        raise PlottingError(f"坐标轴边框必须是：{', '.join(AXES_FRAMES)}。")
+    if legend_layout not in LEGEND_LAYOUTS:
+        raise PlottingError(f"图例布局必须是：{', '.join(LEGEND_LAYOUTS)}。")
 
     samples = normalized[sample_column].astype("string").tolist()
     if group_column is None:
@@ -210,6 +274,7 @@ def build_figure(
         ax.axhline(1.0, color="#767676", linewidth=0.8, linestyle="--", zorder=1)
 
     plotted_sample_count = 0
+    data_lines: list[Line2D] = []
     for row_index, (sample, group) in enumerate(zip(samples, groups)):
         y = normalized.loc[
             normalized.index[row_index], value_columns
@@ -218,7 +283,7 @@ def build_figure(
         if not np.isfinite(y).any():
             skipped_samples.append(str(sample))
             continue
-        ax.plot(
+        (data_line,) = ax.plot(
             x,
             y,
             color=color_by_group[group],
@@ -233,6 +298,7 @@ def build_figure(
             solid_joinstyle="round",
             zorder=2,
         )
+        data_lines.append(data_line)
         plotted_sample_count += 1
 
     if plotted_sample_count == 0:
@@ -253,8 +319,11 @@ def build_figure(
     ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
     ax.set_axisbelow(True)
     ax.grid(which="major", axis="y", color="#D7D7D7", linewidth=0.45)
-    for spine in ("left", "bottom"):
-        ax.spines[spine].set_linewidth(0.7)
+    visible_spines = ("left", "bottom", "top", "right") if axes_frame == "full" else ("left", "bottom")
+    for spine in ("left", "bottom", "top", "right"):
+        ax.spines[spine].set_visible(spine in visible_spines)
+        if spine in visible_spines:
+            ax.spines[spine].set_linewidth(0.7)
     if title:
         ax.set_title(title, fontsize=8.5, fontweight="bold", loc="left", pad=7)
 
@@ -273,20 +342,10 @@ def build_figure(
         )
         for index, group in enumerate(groups)
     ]
-    if group_column is None:
-        fig.legend(
-            sample_handles,
-            [str(sample) for sample in samples],
-            loc="upper left",
-            bbox_to_anchor=(0.755, 0.91),
-            fontsize=6.2,
-            title="Sample ID",
-            title_fontsize=6.6,
-            handlelength=1.6,
-            labelspacing=0.45,
-            borderaxespad=0,
-        )
-    else:
+    group_handles: list[Line2D] = []
+    group_labels: list[str] = []
+    group_title = ""
+    if group_column is not None:
         group_handles = [
             Line2D(
                 [0],
@@ -301,13 +360,32 @@ def build_figure(
             textwrap.fill(f"{group} (n={group_counts[group]})", width=26)
             for group in group_order
         ]
+        group_title = (
+            "Rock type" if str(group_column).casefold() == "group" else str(group_column)
+        )
+
+    def add_outside_legends() -> None:
+        if group_column is None:
+            fig.legend(
+                sample_handles,
+                [str(sample) for sample in samples],
+                loc="upper left",
+                bbox_to_anchor=(0.755, 0.91),
+                fontsize=6.2,
+                title="Sample ID",
+                title_fontsize=6.6,
+                handlelength=1.6,
+                labelspacing=0.45,
+                borderaxespad=0,
+            )
+            return
         fig.legend(
             group_handles,
             group_labels,
             loc="upper left",
             bbox_to_anchor=(0.755, 0.91),
             fontsize=6.1,
-            title="Rock type" if str(group_column).casefold() == "group" else str(group_column),
+            title=group_title,
             title_fontsize=6.6,
             handlelength=1.8,
             labelspacing=0.5,
@@ -327,6 +405,82 @@ def build_figure(
             ncol=2 if len(samples) >= 6 else 1,
             borderaxespad=0,
         )
+
+    def add_inside_legends() -> list[Any]:
+        legends: list[Any] = []
+        if group_column is not None:
+            compact_group_labels = [
+                textwrap.fill(f"{group} (n={group_counts[group]})", width=22)
+                for group in group_order
+            ]
+            group_legend = ax.legend(
+                group_handles,
+                compact_group_labels,
+                loc="upper right",
+                bbox_to_anchor=(0.985, 0.985),
+                bbox_transform=ax.transAxes,
+                fontsize=5.6,
+                title=group_title,
+                title_fontsize=6.1,
+                handlelength=1.65,
+                labelspacing=0.34,
+                borderaxespad=0,
+                frameon=True,
+                fancybox=False,
+                borderpad=0.48,
+            )
+            configure_boxed_legend(group_legend)
+            ax.add_artist(group_legend)
+            legends.append(group_legend)
+        sample_legend = ax.legend(
+            sample_handles,
+            [str(sample) for sample in samples],
+            loc="upper right",
+            bbox_to_anchor=(0.985, 0.66 if group_column is not None else 0.985),
+            bbox_transform=ax.transAxes,
+            fontsize=5.4,
+            title="Sample ID (symbol)" if group_column is not None else "Sample ID",
+            title_fontsize=5.9,
+            handlelength=1.25,
+            labelspacing=0.32,
+            columnspacing=0.62,
+            ncol=min(3, len(samples)),
+            borderaxespad=0,
+            frameon=True,
+            fancybox=False,
+            borderpad=0.48,
+        )
+        configure_boxed_legend(sample_legend)
+        legends.append(sample_legend)
+        return legends
+
+    plot_right = 0.96 if legend_layout == "inside-auto" else 0.73
+    fig.subplots_adjust(
+        left=0.095,
+        right=plot_right,
+        bottom=0.16,
+        top=0.90 if title else 0.95,
+    )
+    legend_position = "outside_right"
+    legend_fallback = False
+    if legend_layout == "inside-auto":
+        inside_legends = add_inside_legends()
+        if legends_overlap_data(ax, data_lines, inside_legends):
+            for legend in inside_legends:
+                legend.remove()
+            fig.subplots_adjust(
+                left=0.095,
+                right=0.73,
+                bottom=0.16,
+                top=0.90 if title else 0.95,
+            )
+            add_outside_legends()
+            legend_position = "outside_right_fallback"
+            legend_fallback = True
+        else:
+            legend_position = "inside_upper_right"
+    else:
+        add_outside_legends()
     reference_note = "Normalization: Sun & McDonough (1989) C1 chondrite"
     if unity_line_visible:
         reference_note += "; dashed line = unity."
@@ -339,12 +493,6 @@ def build_figure(
         fontsize=5.8,
         color="#4D4D4D",
         ha="left",
-    )
-    fig.subplots_adjust(
-        left=0.095,
-        right=0.73,
-        bottom=0.16,
-        top=0.90 if title else 0.95,
     )
     return fig, {
         "normalization_id": reference_id,
@@ -371,9 +519,23 @@ def build_figure(
         "skipped_samples": skipped_samples,
         "palette_repeated": len(group_order) > len(GROUP_COLORS),
         "line_style_repeated": len(group_order) > len(LINE_STYLES),
-        "legend_strategy": "separate group colour/line-style and sample-symbol keys"
-        if group_column is not None
-        else "sample key",
+        "axes_frame": axes_frame,
+        "legend_layout_requested": legend_layout,
+        "legend_position": legend_position,
+        "legend_fallback": legend_fallback,
+        "legend_collision_free": True,
+        "inside_legend_collision_free": (
+            not legend_fallback if legend_layout == "inside-auto" else None
+        ),
+        "legend_strategy": (
+            "boxed in-axes group colour/line-style and sample-symbol keys with collision check"
+            if legend_position == "inside_upper_right" and group_column is not None
+            else "boxed in-axes sample key with collision check"
+            if legend_position == "inside_upper_right"
+            else "separate group colour/line-style and sample-symbol keys"
+            if group_column is not None
+            else "sample key"
+        ),
         "colour_is_not_the_only_identifier": True,
         "group_encoding": "colour plus line style",
         "sample_encoding": "unique symbol",
@@ -419,6 +581,8 @@ def plot_path(
     height_mm: float = 120.0,
     dpi: int = 600,
     y_margin: float = DEFAULT_LOG_Y_MARGIN,
+    axes_frame: str = "open",
+    legend_layout: str = "outside",
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
 ) -> dict[str, Any]:
@@ -507,7 +671,9 @@ def plot_path(
             title,
             width_mm,
             height_mm,
-            y_margin,
+            y_margin=y_margin,
+            axes_frame=axes_frame,
+            legend_layout=legend_layout,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -568,6 +734,14 @@ def plot_path(
                     samples=plot_info["skipped_samples"],
                 )
             )
+        if plot_info["legend_fallback"]:
+            run_issues.append(
+                issue(
+                    "W505",
+                    "warning",
+                    "图内自动图例会遮挡数据，已安全改为右侧图例布局。",
+                )
+            )
 
         report = {
             "status": "ready",
@@ -599,6 +773,9 @@ def plot_path(
                 "y_limits": plot_info["y_limits"],
                 "unity_line": plot_info["unity_line_visible"],
                 "reference_line_value": 1.0,
+                "axes_frame": axes_frame,
+                "legend_layout": legend_layout,
+                "legend_position": plot_info["legend_position"],
                 "width_mm": width_mm,
                 "height_mm": height_mm,
                 "png_dpi": dpi,
@@ -664,6 +841,18 @@ def parse_args() -> argparse.Namespace:
         help="对数纵坐标边距比例，默认 0.08（建议 0.05–0.10）",
     )
     parser.add_argument(
+        "--axes-frame",
+        choices=AXES_FRAMES,
+        default="open",
+        help="坐标轴边框：open（左下）或 full（四边框）",
+    )
+    parser.add_argument(
+        "--legend-layout",
+        choices=LEGEND_LAYOUTS,
+        default="outside",
+        help="图例布局：outside（右侧）或 inside-auto（图内自动避让）",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="明确允许替换已存在的整套输出文件",
@@ -690,6 +879,8 @@ def main() -> int:
         height_mm=args.height_mm,
         dpi=args.dpi,
         y_margin=args.y_margin,
+        axes_frame=args.axes_frame,
+        legend_layout=args.legend_layout,
         overwrite=args.overwrite,
     )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
