@@ -29,7 +29,8 @@ The source-selection decision, transcription cross-check, and project-owner doma
 
 - Use the conventional La-to-Lu order without Pm.
 - Use a logarithmic normalized-concentration axis.
-- Draw a unity reference line at `y = 1`.
+- Derive the y-axis range from the finite, positive normalized values. Use an 8% default margin in log space, with at least an 8% proportional margin for narrow ranges; record the resulting limits in the run report.
+- Draw a unity reference line at `y = 1` only when it lies inside the adaptive display range. When it is outside the range, retain the normalization source in the figure note and do not add an empty decade solely to show the line.
 - Show the normalization identifier in the axis label or figure note.
 - Preserve gaps caused by missing data; do not connect across multiple missing elements.
 - Export SVG, PDF, 600 dpi TIFF, and 600 dpi PNG from the same figure object.

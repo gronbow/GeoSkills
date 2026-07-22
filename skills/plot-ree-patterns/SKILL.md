@@ -19,8 +19,8 @@ Treat this Skill as a functional beta with a publication-oriented export workflo
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
 6. Run `scripts/normalize_ree.py INPUT --output OUTPUT.csv` only after inspection passes. Use the named, versioned reference composition stored in `assets/`; do not copy values into prompts or recalculate them manually.
-7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate editable SVG/PDF, 600 dpi LZW-compressed TIFF, 600 dpi PNG, normalized source-data CSV, and a JSON run report from the same figure object.
-8. Inspect the PNG or TIFF visually at the declared final size. Confirm readable text, unobstructed data, interpretable grayscale/symbol encoding, and correct legend mapping before delivery.
+7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate editable SVG/PDF, 600 dpi LZW-compressed TIFF, 600 dpi PNG, normalized source-data CSV, and a JSON run report from the same figure object. The default `--y-margin 0.08` sets compact, data-led log-axis limits; use `0.05–0.10` unless a journal or scientific comparison needs another value.
+8. Inspect the PNG or TIFF visually at the declared final size. Confirm readable text, unobstructed data, interpretable grayscale/symbol encoding, correct legend mapping, and that no empty log-scale decade has been retained only for a reference line.
 9. Return the publication bundle with its configuration record, validation report, source data, and concise scientific caveats.
 
 ## Scientific guardrails
@@ -29,6 +29,7 @@ Treat this Skill as a functional beta with a publication-oriented export workflo
 - Require concentration units to be known before normalization. The first release targets ppm input.
 - Preserve missing values as gaps unless the user explicitly selects and records another policy.
 - Reject zero and negative concentrations on a logarithmic axis; report affected samples and elements.
+- Set log-axis limits from the finite positive normalized values, with an 8% default visual margin; do not retain an empty decade merely to display `y = 1`.
 - Do not invent or silently substitute reference values.
 - Describe visible patterns conservatively. Do not infer petrogenesis from an REE plot alone.
 - Keep user data local by default and do not make network requests during plotting.

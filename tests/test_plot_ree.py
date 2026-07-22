@@ -114,6 +114,8 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
         "RockUnit",
         "--elements",
         "La,Ce,Pr",
+        "--y-margin",
+        "0.05",
     )
 
     assert result.returncode == 0
@@ -123,6 +125,8 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
     assert report["configuration"]["elements"] == ["La", "Ce", "Pr"]
     assert report["configuration"]["png_dpi"] == 600
     assert report["configuration"]["tiff_dpi"] == 600
+    assert report["configuration"]["y_margin_fraction"] == 0.05
+    assert report["configuration"]["y_limit_policy"] == "adaptive_log10"
     assert report["plot"]["legend_strategy"] == (
         "separate group colour/line-style and sample-symbol keys"
     )
@@ -142,7 +146,7 @@ def test_missing_value_is_preserved_in_line_data() -> None:
                 "Pr_N": [2.0, 1.6],
             }
         )
-        figure, _ = build_figure(
+        figure, plot_info = build_figure(
             normalized,
             "Sample",
             None,
@@ -159,7 +163,46 @@ def test_missing_value_is_preserved_in_line_data() -> None:
             figure.axes[0].lines[1].get_marker()
             != figure.axes[0].lines[2].get_marker()
         )
+        assert plot_info["unity_line_visible"] is True
         assert len(figure.legends) == 1
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_adaptive_log_limits_remove_empty_unity_decade() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["A", "B"],
+                "La_N": [11.3, 20.0],
+                "Ce_N": [100.0, 200.0],
+                "Pr_N": [1004.2, 800.0],
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            None,
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=100,
+            height_mm=70,
+        )
+        lower, upper = figure.axes[0].get_ylim()
+
+        assert plot_info["unity_line_visible"] is False
+        assert plot_info["y_limits"]["policy"] == "adaptive_log10"
+        assert 1.0 < lower < 11.3
+        assert upper > 1004.2
+        assert lower / 11.3 > 0.5
+        assert upper / 1004.2 < 2.0
+        assert len(figure.axes[0].lines) == 2
     finally:
         if "plot_ree" in sys.modules:
             sys.modules["plot_ree"].plt.close("all")

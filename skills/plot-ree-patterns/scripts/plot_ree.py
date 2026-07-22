@@ -63,10 +63,45 @@ GROUP_COLORS = [
 MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h", "p", "*"]
 LINE_STYLES = ["-", "--", "-.", ":"]
 FORMATS = ("svg", "pdf", "tiff", "png")
+DEFAULT_LOG_Y_MARGIN = 0.08
 
 
 class PlottingError(Exception):
     """An expected problem that makes figure creation unsafe."""
+
+
+def adaptive_log_y_limits(
+    values: np.ndarray, margin_fraction: float = DEFAULT_LOG_Y_MARGIN
+) -> tuple[float, float, float, float, float]:
+    """Return positive log-scale limits with compact, data-led visual margins.
+
+    The margin is measured in log space for broad REE patterns, but never becomes
+    smaller than the requested proportional margin for a narrow data range.
+    """
+    if not 0.01 <= margin_fraction <= 0.25:
+        raise PlottingError("纵坐标边距必须在 0.01–0.25 之间。")
+
+    numeric = np.asarray(values, dtype=float).ravel()
+    valid = numeric[np.isfinite(numeric) & (numeric > 0)]
+    if valid.size == 0:
+        raise PlottingError("没有可用于对数纵坐标范围计算的正数值。")
+
+    data_min = float(valid.min())
+    data_max = float(valid.max())
+    log_min = float(np.log10(data_min))
+    log_max = float(np.log10(data_max))
+    data_span_decades = log_max - log_min
+    margin_decades = max(
+        data_span_decades * margin_fraction,
+        float(np.log10(1.0 + margin_fraction)),
+    )
+    return (
+        float(10 ** (log_min - margin_decades)),
+        float(10 ** (log_max + margin_decades)),
+        data_min,
+        data_max,
+        margin_decades,
+    )
 
 
 def parse_element_selection(selection: str | None, available: list[str]) -> list[str]:
@@ -97,6 +132,7 @@ def build_figure(
     title: str | None = None,
     width_mm: float = 183.0,
     height_mm: float = 120.0,
+    y_margin: float = DEFAULT_LOG_Y_MARGIN,
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
     if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
@@ -126,12 +162,28 @@ def build_figure(
         facecolor="white",
     )
     x = np.arange(len(elements))
-    ax.axhline(1.0, color="#767676", linewidth=0.8, linestyle="--", zorder=1)
+    value_columns = [f"{element}_N" for element in elements]
+    all_values = normalized.loc[:, value_columns].to_numpy(dtype=float)
+    (
+        y_lower,
+        y_upper,
+        data_min,
+        data_max,
+        margin_decades,
+    ) = adaptive_log_y_limits(all_values, y_margin)
+    unity_line_visible = y_lower <= 1.0 <= y_upper
 
+    ax.set_yscale("log")
+    ax.set_ylim(y_lower, y_upper)
+    if unity_line_visible:
+        ax.axhline(1.0, color="#767676", linewidth=0.8, linestyle="--", zorder=1)
+
+    plotted_sample_count = 0
     for row_index, (sample, group) in enumerate(zip(samples, groups)):
         y = normalized.loc[
-            normalized.index[row_index], [f"{element}_N" for element in elements]
+            normalized.index[row_index], value_columns
         ].to_numpy(dtype=float)
+        y = np.where(np.isfinite(y) & (y > 0), y, np.nan)
         if not np.isfinite(y).any():
             skipped_samples.append(str(sample))
             continue
@@ -150,12 +202,12 @@ def build_figure(
             solid_joinstyle="round",
             zorder=2,
         )
+        plotted_sample_count += 1
 
-    if not ax.lines[1:]:
+    if plotted_sample_count == 0:
         plt.close(fig)
         raise PlottingError("所有样品在所选元素上都为空，无法绘图。")
 
-    ax.set_yscale("log")
     ax.set_xlim(-0.4, len(elements) - 0.6)
     ax.set_xticks(x)
     ax.set_xticklabels(elements)
@@ -244,10 +296,15 @@ def build_figure(
             ncol=2 if len(samples) >= 6 else 1,
             borderaxespad=0,
         )
+    reference_note = "Normalization: Sun & McDonough (1989) C1 chondrite"
+    if unity_line_visible:
+        reference_note += "; dashed line = unity."
+    else:
+        reference_note += "; limits adapt to positive normalized data."
     fig.text(
         0.095,
         0.045,
-        "Normalization: Sun & McDonough (1989) C1 chondrite; dashed line = unity.",
+        reference_note,
         fontsize=5.8,
         color="#4D4D4D",
         ha="left",
@@ -260,6 +317,16 @@ def build_figure(
     )
     return fig, {
         "normalization_id": reference_id,
+        "y_limits": {
+            "lower": y_lower,
+            "upper": y_upper,
+            "data_min": data_min,
+            "data_max": data_max,
+            "margin_fraction": y_margin,
+            "margin_decades": margin_decades,
+            "policy": "adaptive_log10",
+        },
+        "unity_line_visible": unity_line_visible,
         "sample_count": len(samples),
         "group_count": len(group_order),
         "group_column": group_column,
@@ -313,6 +380,7 @@ def plot_path(
     width_mm: float = 183.0,
     height_mm: float = 120.0,
     dpi: int = 600,
+    y_margin: float = DEFAULT_LOG_Y_MARGIN,
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
 ) -> dict[str, Any]:
@@ -401,6 +469,7 @@ def plot_path(
             title,
             width_mm,
             height_mm,
+            y_margin,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -487,7 +556,11 @@ def plot_path(
                 "group_column": group_column,
                 "elements": elements,
                 "y_scale": "log10",
-                "unity_line": True,
+                "y_limit_policy": plot_info["y_limits"]["policy"],
+                "y_margin_fraction": y_margin,
+                "y_limits": plot_info["y_limits"],
+                "unity_line": plot_info["unity_line_visible"],
+                "reference_line_value": 1.0,
                 "width_mm": width_mm,
                 "height_mm": height_mm,
                 "png_dpi": dpi,
@@ -547,6 +620,12 @@ def parse_args() -> argparse.Namespace:
         "--dpi", type=int, default=600, help="PNG/TIFF 分辨率，默认 600 dpi"
     )
     parser.add_argument(
+        "--y-margin",
+        type=float,
+        default=DEFAULT_LOG_Y_MARGIN,
+        help="对数纵坐标边距比例，默认 0.08（建议 0.05–0.10）",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="明确允许替换已存在的整套输出文件",
@@ -563,16 +642,17 @@ def main() -> int:
     report = plot_path(
         args.input,
         args.output_dir,
-        args.stem,
-        args.sheet,
-        args.sample_column,
-        args.group_column,
-        args.elements,
-        args.title,
-        args.width_mm,
-        args.height_mm,
-        args.dpi,
-        args.overwrite,
+        stem=args.stem,
+        requested_sheet=args.sheet,
+        requested_sample_column=args.sample_column,
+        requested_group_column=args.group_column,
+        requested_elements=args.elements,
+        title=args.title,
+        width_mm=args.width_mm,
+        height_mm=args.height_mm,
+        dpi=args.dpi,
+        y_margin=args.y_margin,
+        overwrite=args.overwrite,
     )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
