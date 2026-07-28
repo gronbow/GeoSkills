@@ -1,4 +1,4 @@
 interface:
   display_name: "GeoSkills"
-  short_description: "Create submission-ready chondrite-normalized REE plots"
-  default_prompt: "Use $geoskills to inspect my geochemical table and create a submission-ready chondrite-normalized REE pattern figure bundle."
+  short_description: "Create validated REE and trace-element pattern plots"
+  default_prompt: "Use $geoskills to inspect my geochemical table and create a validated REE or trace-element spider-plot figure bundle."

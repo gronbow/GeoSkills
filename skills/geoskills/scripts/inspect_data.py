@@ -59,7 +59,7 @@ GROUP_NAMES = {
     "suite",
 }
 
-UNIT_PATTERN = r"ppm|ppb|wt\s*%|wt\s*pct|wt\s*percent"
+UNIT_PATTERN = r"ppm|ppb|wt\s*\.?\s*%|wt\s*pct|wt\s*percent"
 REE_HEADER_PATTERN = re.compile(
     rf"^\s*({'|'.join(element.lower() for element in REE_ORDER)})"
     rf"(?:[\s_\-\(\[]*({UNIT_PATTERN})[\s\)\]]*)?\s*$",
@@ -91,7 +91,7 @@ def infer_unit(column: object) -> str:
         return "ppm"
     if "ppb" in normalized:
         return "ppb"
-    if re.search(r"wt\s*(?:%|pct|percent)", normalized):
+    if re.search(r"wt\s*\.?\s*(?:%|pct|percent)", normalized):
         return "wt%"
     return "unknown"
 
