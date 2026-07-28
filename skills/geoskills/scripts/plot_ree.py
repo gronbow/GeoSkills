@@ -38,7 +38,7 @@ plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans", "Liberation Sans"]
 plt.rcParams["svg.fonttype"] = "none"
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["font.size"] = 7
-plt.rcParams["axes.labelsize"] = 7.5
+plt.rcParams["axes.labelsize"] = 7
 plt.rcParams["axes.linewidth"] = 0.7
 plt.rcParams["xtick.labelsize"] = 7
 plt.rcParams["ytick.labelsize"] = 7
@@ -67,6 +67,7 @@ FORMATS = ("svg", "pdf", "tiff", "png")
 DEFAULT_LOG_Y_MARGIN = 0.08
 AXES_FRAMES = ("open", "full")
 LEGEND_LAYOUTS = ("outside", "inside-auto")
+GRID_STYLES = ("none", "major")
 
 
 class PlottingError(Exception):
@@ -107,31 +108,32 @@ def adaptive_log_y_limits(
     )
 
 
-def nice_integer_log_y_limits(
+def clean_log_y_limits(
     adaptive_lower: float,
     adaptive_upper: float,
     data_min: float,
 ) -> tuple[float, float, float, float]:
-    """Round adaptive log limits to readable bounds without clipping data.
+    """Round adaptive log limits to readable decimal bounds without clipping data.
 
     Use the actual data minimum as the lower-bound safety check. This lets an
     adaptive lower margin of 7.89 become 10 when the first real value is 11.29,
     while still preserving a clean integer edge and every plotted data point.
     """
-    lower_step = max(1.0, 10 ** np.floor(np.log10(data_min)))
+    lower_step = float(10 ** np.floor(np.log10(data_min)))
     lower = float(np.floor(data_min / lower_step) * lower_step)
     if np.isclose(lower, data_min):
-        lower = lower_step / 2.0
+        next_lower = lower - lower_step
+        lower = float(next_lower if next_lower > 0 else lower_step / 2.0)
     if lower <= 0:
-        lower = lower_step
+        lower = lower_step / 2.0
 
-    upper_step = max(1.0, 10 ** (np.floor(np.log10(adaptive_upper)) - 1))
+    upper_step = float(10 ** (np.floor(np.log10(adaptive_upper)) - 1))
     upper = float(np.ceil(adaptive_upper / upper_step) * upper_step)
 
     if not lower < data_min:
         raise PlottingError("无法在不裁切数据的情况下确定整洁的纵坐标下限。")
-    if not upper > adaptive_upper:
-        upper += upper_step
+    if upper < adaptive_upper:
+        raise PlottingError("无法在不裁切数据的情况下确定整洁的纵坐标上限。")
     return lower, upper, float(lower_step), float(upper_step)
 
 
@@ -221,6 +223,7 @@ def build_figure(
     y_margin: float = DEFAULT_LOG_Y_MARGIN,
     axes_frame: str = "open",
     legend_layout: str = "outside",
+    grid_style: str = "none",
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
     if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
@@ -229,6 +232,8 @@ def build_figure(
         raise PlottingError(f"坐标轴边框必须是：{', '.join(AXES_FRAMES)}。")
     if legend_layout not in LEGEND_LAYOUTS:
         raise PlottingError(f"图例布局必须是：{', '.join(LEGEND_LAYOUTS)}。")
+    if grid_style not in GRID_STYLES:
+        raise PlottingError(f"网格样式必须是：{', '.join(GRID_STYLES)}。")
 
     samples = normalized[sample_column].astype("string").tolist()
     if group_column is None:
@@ -246,7 +251,6 @@ def build_figure(
         group: LINE_STYLES[index % len(LINE_STYLES)]
         for index, group in enumerate(group_order)
     }
-    group_counts = Counter(groups)
     skipped_samples: list[str] = []
 
     fig, ax = plt.subplots(
@@ -264,7 +268,7 @@ def build_figure(
         margin_decades,
     ) = adaptive_log_y_limits(all_values, y_margin)
     y_lower, y_upper, lower_rounding_step, upper_rounding_step = (
-        nice_integer_log_y_limits(adaptive_lower, adaptive_upper, data_min)
+        clean_log_y_limits(adaptive_lower, adaptive_upper, data_min)
     )
     unity_line_visible = y_lower <= 1.0 <= y_upper
 
@@ -274,6 +278,7 @@ def build_figure(
         ax.axhline(1.0, color="#767676", linewidth=0.8, linestyle="--", zorder=1)
 
     plotted_sample_count = 0
+    plotted_indices: list[int] = []
     data_lines: list[Line2D] = []
     for row_index, (sample, group) in enumerate(zip(samples, groups)):
         y = normalized.loc[
@@ -299,6 +304,7 @@ def build_figure(
             zorder=2,
         )
         data_lines.append(data_line)
+        plotted_indices.append(row_index)
         plotted_sample_count += 1
 
     if plotted_sample_count == 0:
@@ -318,14 +324,32 @@ def build_figure(
     ax.yaxis.set_major_formatter(LogFormatterMathtext(base=10))
     ax.yaxis.set_minor_locator(LogLocator(base=10, subs=np.arange(2, 10) * 0.1))
     ax.set_axisbelow(True)
-    ax.grid(which="major", axis="y", color="#D7D7D7", linewidth=0.45)
-    visible_spines = ("left", "bottom", "top", "right") if axes_frame == "full" else ("left", "bottom")
+    if grid_style == "major":
+        ax.grid(
+            visible=True,
+            which="major",
+            axis="y",
+            color="#D7D7D7",
+            linewidth=0.45,
+        )
+    else:
+        ax.grid(visible=False, which="major", axis="y")
+    visible_spines = (
+        ("left", "bottom", "top", "right")
+        if axes_frame == "full"
+        else ("left", "bottom")
+    )
     for spine in ("left", "bottom", "top", "right"):
         ax.spines[spine].set_visible(spine in visible_spines)
         if spine in visible_spines:
             ax.spines[spine].set_linewidth(0.7)
     if title:
-        ax.set_title(title, fontsize=8.5, fontweight="bold", loc="left", pad=7)
+        ax.set_title(title, fontsize=7, fontweight="bold", loc="left", pad=7)
+
+    plotted_samples = [samples[index] for index in plotted_indices]
+    plotted_groups = [groups[index] for index in plotted_indices]
+    plotted_group_order = list(dict.fromkeys(plotted_groups))
+    plotted_group_counts = Counter(plotted_groups)
 
     sample_handles = [
         Line2D(
@@ -340,7 +364,7 @@ def build_figure(
             markeredgecolor="white",
             markeredgewidth=0.35,
         )
-        for index, group in enumerate(groups)
+        for index, group in zip(plotted_indices, plotted_groups)
     ]
     group_handles: list[Line2D] = []
     group_labels: list[str] = []
@@ -354,11 +378,11 @@ def build_figure(
                 linewidth=1.6,
                 linestyle=style_by_group[group],
             )
-            for group in group_order
+            for group in plotted_group_order
         ]
         group_labels = [
-            textwrap.fill(f"{group} (n={group_counts[group]})", width=26)
-            for group in group_order
+            textwrap.fill(f"{group} (n={plotted_group_counts[group]})", width=26)
+            for group in plotted_group_order
         ]
         group_title = (
             "Rock type" if str(group_column).casefold() == "group" else str(group_column)
@@ -368,7 +392,7 @@ def build_figure(
         if group_column is None:
             fig.legend(
                 sample_handles,
-                [str(sample) for sample in samples],
+                [str(sample) for sample in plotted_samples],
                 loc="upper left",
                 bbox_to_anchor=(0.755, 0.91),
                 fontsize=6.2,
@@ -393,7 +417,7 @@ def build_figure(
         )
         fig.legend(
             sample_handles,
-            [str(sample) for sample in samples],
+            [str(sample) for sample in plotted_samples],
             loc="upper left",
             bbox_to_anchor=(0.755, 0.57),
             fontsize=6.1,
@@ -402,7 +426,7 @@ def build_figure(
             handlelength=1.35,
             labelspacing=0.45,
             columnspacing=0.8,
-            ncol=2 if len(samples) >= 6 else 1,
+            ncol=2 if len(plotted_samples) >= 6 else 1,
             borderaxespad=0,
         )
 
@@ -410,8 +434,8 @@ def build_figure(
         legends: list[Any] = []
         if group_column is not None:
             compact_group_labels = [
-                textwrap.fill(f"{group} (n={group_counts[group]})", width=22)
-                for group in group_order
+                textwrap.fill(f"{group} (n={plotted_group_counts[group]})", width=22)
+                for group in plotted_group_order
             ]
             group_legend = ax.legend(
                 group_handles,
@@ -434,7 +458,7 @@ def build_figure(
             legends.append(group_legend)
         sample_legend = ax.legend(
             sample_handles,
-            [str(sample) for sample in samples],
+            [str(sample) for sample in plotted_samples],
             loc="upper right",
             bbox_to_anchor=(0.985, 0.66 if group_column is not None else 0.985),
             bbox_transform=ax.transAxes,
@@ -444,7 +468,7 @@ def build_figure(
             handlelength=1.25,
             labelspacing=0.32,
             columnspacing=0.62,
-            ncol=min(3, len(samples)),
+            ncol=min(3, len(plotted_samples)),
             borderaxespad=0,
             frameon=True,
             fancybox=False,
@@ -485,7 +509,7 @@ def build_figure(
     if unity_line_visible:
         reference_note += "; dashed line = unity."
     else:
-        reference_note += "; limits adapt and round to clean integer bounds."
+        reference_note += "; limits adapt and round to clean bounds."
     fig.text(
         0.095,
         0.045,
@@ -506,20 +530,24 @@ def build_figure(
             "margin_fraction": y_margin,
             "margin_decades": margin_decades,
             "rounding": {
-                "policy": "nice_integer_bounds",
+                "policy": "clean_log_bounds",
                 "lower_step": lower_rounding_step,
                 "upper_step": upper_rounding_step,
             },
-            "policy": "adaptive_log10_nice_integer_bounds",
+            "policy": "adaptive_log10_clean_bounds",
         },
         "unity_line_visible": unity_line_visible,
         "sample_count": len(samples),
-        "group_count": len(group_order),
+        "plotted_sample_count": plotted_sample_count,
+        "legend_sample_count": len(plotted_samples),
+        "group_count": len(plotted_group_order),
         "group_column": group_column,
         "skipped_samples": skipped_samples,
-        "palette_repeated": len(group_order) > len(GROUP_COLORS),
-        "line_style_repeated": len(group_order) > len(LINE_STYLES),
+        "palette_repeated": len(plotted_group_order) > len(GROUP_COLORS),
+        "line_style_repeated": len(plotted_group_order) > len(LINE_STYLES),
+        "marker_repeated": plotted_sample_count > len(MARKERS),
         "axes_frame": axes_frame,
+        "grid_style": grid_style,
         "legend_layout_requested": legend_layout,
         "legend_position": legend_position,
         "legend_fallback": legend_fallback,
@@ -537,8 +565,14 @@ def build_figure(
             else "sample key"
         ),
         "colour_is_not_the_only_identifier": True,
-        "group_encoding": "colour plus line style",
-        "sample_encoding": "unique symbol",
+        "group_encoding": (
+            "colour plus line style" if group_column is not None else "not applicable"
+        ),
+        "sample_encoding": (
+            "unique symbol"
+            if plotted_sample_count <= len(MARKERS)
+            else f"symbols repeat after {len(MARKERS)} plotted samples"
+        ),
     }
 
 
@@ -583,6 +617,7 @@ def plot_path(
     y_margin: float = DEFAULT_LOG_Y_MARGIN,
     axes_frame: str = "open",
     legend_layout: str = "outside",
+    grid_style: str = "none",
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
 ) -> dict[str, Any]:
@@ -674,6 +709,7 @@ def plot_path(
             y_margin=y_margin,
             axes_frame=axes_frame,
             legend_layout=legend_layout,
+            grid_style=grid_style,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -698,13 +734,13 @@ def plot_path(
         figure = None
 
         run_issues = list(inspection["issues"])
-        if plot_info["sample_count"] > 15:
+        if plot_info["plotted_sample_count"] > 15:
             run_issues.append(
                 issue(
                     "W501",
                     "warning",
                     "样品数超过 15，图例和曲线可能拥挤；建议按组分图。",
-                    sample_count=plot_info["sample_count"],
+                    sample_count=plot_info["plotted_sample_count"],
                 )
             )
         if plot_info["palette_repeated"]:
@@ -723,6 +759,16 @@ def plot_path(
                     "warning",
                     "分组数量超过基础线型数量，灰度打印时部分组可能难以区分；建议按组分图。",
                     group_count=plot_info["group_count"],
+                )
+            )
+        if plot_info["marker_repeated"]:
+            run_issues.append(
+                issue(
+                    "W506",
+                    "warning",
+                    "已绘制样品数超过可用符号数量，部分样品符号会重复；建议按组分图。",
+                    sample_count=plot_info["plotted_sample_count"],
+                    unique_marker_count=len(MARKERS),
                 )
             )
         if plot_info["skipped_samples"]:
@@ -776,6 +822,7 @@ def plot_path(
                 "axes_frame": axes_frame,
                 "legend_layout": legend_layout,
                 "legend_position": plot_info["legend_position"],
+                "grid_style": grid_style,
                 "width_mm": width_mm,
                 "height_mm": height_mm,
                 "png_dpi": dpi,
@@ -792,7 +839,11 @@ def plot_path(
                 "raster_dpi": dpi,
                 "tiff_compression": "LZW",
                 "white_background": True,
-                "colourblind_support": "group colour plus line style; unique sample symbol",
+                "colourblind_support": (
+                    "group colour plus line style; unique sample symbol"
+                    if not plot_info["marker_repeated"]
+                    else "group colour plus line style; sample symbols repeat with warning"
+                ),
                 "source_data_exported": True,
             },
             "report_file": str(report_path.resolve()),
@@ -853,6 +904,12 @@ def parse_args() -> argparse.Namespace:
         help="图例布局：outside（右侧）或 inside-auto（图内自动避让）",
     )
     parser.add_argument(
+        "--grid-style",
+        choices=GRID_STYLES,
+        default="none",
+        help="横向网格：none（投稿默认）或 major（仅主刻度）",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="明确允许替换已存在的整套输出文件",
@@ -881,6 +938,7 @@ def main() -> int:
         y_margin=args.y_margin,
         axes_frame=args.axes_frame,
         legend_layout=args.legend_layout,
+        grid_style=args.grid_style,
         overwrite=args.overwrite,
     )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)

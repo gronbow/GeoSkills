@@ -1,4 +1,4 @@
-"""Tests for the beginner-friendly GeoSKILLS environment checker."""
+"""Tests for the beginner-friendly GeoSkills environment checker."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 CHECK_SCRIPT = (
     REPOSITORY_ROOT
     / "skills"
-    / "plot-ree-patterns"
+    / "geoskills"
     / "scripts"
     / "check_environment.py"
 )

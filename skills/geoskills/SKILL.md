@@ -1,15 +1,15 @@
 ---
-name: plot-ree-patterns
-description: Inspect whole-rock geochemical tables and create validated, submission-ready chondrite-normalized rare-earth-element pattern plots from CSV, TXT, or Excel data. Use when an agent needs to identify La-Lu columns, check ppm units and invalid values, group samples, generate publication REE diagrams, export editable SVG/PDF plus 600 dpi TIFF/PNG and source data, or explain why a geochemical table cannot yet be plotted safely.
+name: geoskills
+description: "Inspect whole-rock geochemical tables and create validated, submission-ready chondrite-normalized rare-earth-element pattern plots from CSV, TXT, or Excel data. Use GeoSkills v1 only for REE pattern workflows: identify La-Lu columns, check ppm units and invalid values, group samples, generate publication REE diagrams, export editable SVG/PDF plus 600 dpi TIFF/PNG and source data, or explain why a geochemical table cannot yet be plotted safely. Do not use v1 for spider diagrams, TAS, Harker diagrams, or other geochemical plots."
 ---
 
-# Plot REE Patterns
+# GeoSkills v1: REE Patterns
 
 Create reproducible REE pattern plots through a deterministic local Python workflow. Keep data processing and normalization in scripts; do not ask a language model to calculate normalized values directly.
 
 ## Development status
 
-Treat this Skill as a functional beta with a publication-oriented export workflow. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Both flat tables and unambiguous transposed paper supplements are supported. Continue to report caveats and inspect every generated figure visually at its final physical size before submission.
+Treat GeoSkills v1 as an REE-only functional beta with a publication-oriented export workflow. Do not add or imply spider diagrams, TAS, Harker diagrams, or other plot types in v1. The environment checker, read-only table inspector, confirmed `Chondrite_SM89` reference, normalization command, plotting command, and automated export tests exist. Both flat tables and unambiguous transposed paper supplements are supported. Continue to report caveats and inspect every generated figure visually at its final physical size before submission.
 
 ## Workflow
 
@@ -19,7 +19,7 @@ Treat this Skill as a functional beta with a publication-oriented export workflo
 4. Stop and request clarification when units or column mappings are ambiguous.
 5. Validate missing, non-numeric, zero, and negative values before logarithmic plotting.
 6. Run `scripts/normalize_ree.py INPUT --output OUTPUT.csv` only after inspection passes. Use the named, versioned reference composition stored in `assets/`; do not copy values into prompts or recalculate them manually.
-7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate editable SVG/PDF, 600 dpi LZW-compressed TIFF, 600 dpi PNG, normalized source-data CSV, and a JSON run report from the same figure object. The default `--y-margin 0.08` sets compact, data-led log-axis limits, then rounds them to clean integer boundaries without clipping any data; use `0.05–0.10` unless a journal or scientific comparison needs another value. Use `--axes-frame full --legend-layout inside-auto` when a four-sided plot frame and a boxed in-axes legend are required; the plotter checks for overlap and safely uses the right-side legend when no clear in-axes position exists.
+7. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR` to generate editable SVG/PDF, 600 dpi LZW-compressed TIFF, 600 dpi PNG, normalized source-data CSV, and a JSON run report from the same figure object. The default `--y-margin 0.08` sets compact, data-led log-axis limits, then rounds them to clean powers or decimal boundaries without clipping data below or above unity. The publication default omits background gridlines; use `--grid-style major` only when a target journal or comparison needs them. Use `--axes-frame full --legend-layout inside-auto` when a four-sided plot frame and a boxed in-axes legend are required; the plotter checks for overlap and safely uses the right-side legend when no clear in-axes position exists.
 8. Inspect the PNG or TIFF visually at the declared final size. Confirm readable text, unobstructed data, interpretable grayscale/symbol encoding, correct legend mapping, and that no empty log-scale decade has been retained only for a reference line.
 9. Return the publication bundle with its configuration record, validation report, source data, and concise scientific caveats.
 
@@ -29,7 +29,8 @@ Treat this Skill as a functional beta with a publication-oriented export workflo
 - Require concentration units to be known before normalization. The first release targets ppm input.
 - Preserve missing values as gaps unless the user explicitly selects and records another policy.
 - Reject zero and negative concentrations on a logarithmic axis; report affected samples and elements.
-- Set log-axis limits from the finite positive normalized values, with an 8% default visual margin; round the final lower and upper bounds to clean integer values without clipping data, and do not retain an empty decade merely to display `y = 1`.
+- Set log-axis limits from the finite positive normalized values, with an 8% default visual margin; use clean integer bounds at or above unity and clean decimal bounds below unity, never clip data, and do not retain an empty decade merely to display `y = 1`.
+- Keep v1 limited to chondrite-normalized REE patterns. Route requests for other geochemical diagrams to a future version instead of fabricating unsupported boundaries or reference arrays.
 - When a full axes frame or in-axes legend is requested, preserve the data hierarchy: show top and right spines without redundant ticks, place the legend only in a collision-free region, and fall back to a separate right-side key rather than cover data.
 - Do not invent or silently substitute reference values.
 - Describe visible patterns conservatively. Do not infer petrogenesis from an REE plot alone.

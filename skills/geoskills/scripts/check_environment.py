@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Report whether the local Python environment can support GeoSKILLS development."""
+"""Report whether the local Python environment can support GeoSkills development."""
 
 from __future__ import annotations
 
@@ -37,11 +37,11 @@ def main() -> int:
     print(json.dumps(report, ensure_ascii=False, indent=2))
     if missing:
         print(
-            "GeoSKILLS environment is not ready; missing: " + ", ".join(missing),
+            "GeoSkills environment is not ready; missing: " + ", ".join(missing),
             file=sys.stderr,
         )
         return 1
-    print("GeoSKILLS environment is ready.", file=sys.stderr)
+    print("GeoSkills environment is ready.", file=sys.stderr)
     return 0
 
 

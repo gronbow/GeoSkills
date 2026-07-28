@@ -7,8 +7,8 @@ import pandas as pd
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "skills" / "plot-ree-patterns" / "scripts" / "inspect_data.py"
-EXAMPLE = ROOT / "skills" / "plot-ree-patterns" / "examples" / "synthetic_ree_data.csv"
+SCRIPT = ROOT / "skills" / "geoskills" / "scripts" / "inspect_data.py"
+EXAMPLE = ROOT / "skills" / "geoskills" / "examples" / "synthetic_ree_data.csv"
 
 
 def run_inspector(*arguments: object) -> tuple[subprocess.CompletedProcess[str], dict]:

@@ -9,7 +9,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "skills" / "plot-ree-patterns"
+SKILL = ROOT / "skills" / "geoskills"
 SCRIPT = SKILL / "scripts" / "normalize_ree.py"
 REFERENCE = SKILL / "assets" / "normalization" / "chondrite-sm89.json"
 

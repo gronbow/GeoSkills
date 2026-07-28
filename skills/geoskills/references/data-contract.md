@@ -1,6 +1,6 @@
 # REE input data contract
 
-This file records the first-release rules for data accepted by `plot-ree-patterns`.
+This file records the first-release rules for data accepted by `geoskills` v1.
 
 ## Required information
 

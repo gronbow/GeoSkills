@@ -6,10 +6,11 @@ from pathlib import Path
 import matplotlib.image as mpimg
 import numpy as np
 import pandas as pd
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKILL = ROOT / "skills" / "plot-ree-patterns"
+SKILL = ROOT / "skills" / "geoskills"
 SCRIPT = SKILL / "scripts" / "plot_ree.py"
 EXAMPLE = SKILL / "examples" / "synthetic_ree_data.csv"
 
@@ -76,6 +77,8 @@ def test_exports_publication_bundle_and_report(tmp_path: Path) -> None:
     assert png_path.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert pdf_path.read_bytes().startswith(b"%PDF")
     assert tiff_path.read_bytes()[:4] in {b"II*\x00", b"MM\x00*"}
+    with Image.open(tiff_path) as tiff_image:
+        assert tiff_image.tag_v2.get(259) == 5
     svg = svg_path.read_text(encoding="utf-8")
     assert "<text" in svg
     assert "C1 chondrite" in svg
@@ -127,13 +130,14 @@ def test_custom_columns_and_element_subset(tmp_path: Path) -> None:
     assert report["configuration"]["tiff_dpi"] == 600
     assert report["configuration"]["y_margin_fraction"] == 0.05
     assert report["configuration"]["y_limit_policy"] == (
-        "adaptive_log10_nice_integer_bounds"
+        "adaptive_log10_clean_bounds"
     )
     assert report["plot"]["legend_strategy"] == (
         "separate group colour/line-style and sample-symbol keys"
     )
     assert report["configuration"]["axes_frame"] == "open"
     assert report["configuration"]["legend_layout"] == "outside"
+    assert report["configuration"]["grid_style"] == "none"
 
 
 def test_missing_value_is_preserved_in_line_data() -> None:
@@ -202,14 +206,14 @@ def test_adaptive_log_limits_remove_empty_unity_decade() -> None:
 
         assert plot_info["unity_line_visible"] is False
         assert plot_info["y_limits"]["policy"] == (
-            "adaptive_log10_nice_integer_bounds"
+            "adaptive_log10_clean_bounds"
         )
         assert lower == 10.0
         assert upper == 1500.0
         assert plot_info["y_limits"]["adaptive_lower"] < lower < 11.3
         assert upper > plot_info["y_limits"]["adaptive_upper"]
         assert plot_info["y_limits"]["rounding"] == {
-            "policy": "nice_integer_bounds",
+            "policy": "clean_log_bounds",
             "lower_step": 10.0,
             "upper_step": 100.0,
         }
@@ -267,10 +271,111 @@ def test_full_frame_inside_auto_legend_avoids_data() -> None:
         assert plot_info["legend_fallback"] is False
         assert plot_info["legend_collision_free"] is True
         assert plot_info["inside_legend_collision_free"] is True
+        assert all(not line.get_visible() for line in axes.yaxis.get_gridlines())
+        assert axes.yaxis.label.get_fontsize() <= 7
     finally:
         if "plot_ree" in sys.modules:
             sys.modules["plot_ree"].plt.close("all")
         sys.path.remove(scripts)
+
+
+def test_subunity_to_enriched_pattern_exports_successfully(tmp_path: Path) -> None:
+    input_path = tmp_path / "cross_unity.csv"
+    output_dir = tmp_path / "figures"
+    input_path.write_text(
+        "Sample,Group,La_ppm,Ce_ppm,Pr_ppm\n"
+        "A,Test,0.05925,0.612,9.5\n",
+        encoding="utf-8",
+    )
+
+    result, report = run_plotter(
+        input_path,
+        "--output-dir",
+        output_dir,
+        "--stem",
+        "cross_unity",
+        "--axes-frame",
+        "full",
+        "--legend-layout",
+        "inside-auto",
+        "--dpi",
+        "72",
+    )
+
+    assert result.returncode == 0
+    assert report["status"] == "ready"
+    assert report["configuration"]["y_limits"]["data_min"] == 0.25
+    assert report["configuration"]["y_limits"]["lower"] == 0.2
+    assert report["configuration"]["y_limits"]["upper"] >= 100.0
+    assert report["configuration"]["unity_line"] is True
+    assert len(report["outputs"]) == 4
+
+
+def test_skipped_sample_is_not_listed_in_legend() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["EMPTY", "PLOTTED"],
+                "La_N": [np.nan, 2.0],
+                "Ce_N": [np.nan, 3.0],
+                "Pr_N": [np.nan, 4.0],
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            None,
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=100,
+            height_mm=70,
+        )
+        legend_labels = [text.get_text() for text in figure.legends[0].get_texts()]
+
+        assert plot_info["sample_count"] == 2
+        assert plot_info["plotted_sample_count"] == 1
+        assert plot_info["legend_sample_count"] == 1
+        assert plot_info["skipped_samples"] == ["EMPTY"]
+        assert legend_labels == ["PLOTTED"]
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_repeated_sample_symbols_are_reported(tmp_path: Path) -> None:
+    input_path = tmp_path / "many_samples.csv"
+    output_dir = tmp_path / "figures"
+    frame = pd.DataFrame(
+        {
+            "Sample": [f"S{index:02d}" for index in range(13)],
+            "Group": ["A"] * 13,
+            "La_ppm": np.linspace(0.237, 2.37, 13),
+            "Ce_ppm": np.linspace(0.612, 6.12, 13),
+            "Pr_ppm": np.linspace(0.095, 0.95, 13),
+        }
+    )
+    frame.to_csv(input_path, index=False)
+
+    result, report = run_plotter(
+        input_path,
+        "--output-dir",
+        output_dir,
+        "--dpi",
+        "72",
+    )
+    issue_codes = {item["code"] for item in report["issues"]}
+
+    assert result.returncode == 0
+    assert report["plot"]["plotted_sample_count"] == 13
+    assert report["plot"]["marker_repeated"] is True
+    assert report["plot"]["sample_encoding"] == "symbols repeat after 12 plotted samples"
+    assert "W506" in issue_codes
+    assert "unique sample symbol" not in report["submission_qa"]["colourblind_support"]
 
 
 def test_inside_auto_legend_falls_back_when_data_fill_the_axes() -> None:
