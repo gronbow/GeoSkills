@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "id": "TAS_LeMaitre2002_Volcanic_CombinedT",
+  "display_name": "IUGS volcanic TAS classification",
+  "diagram_type": "total_alkali_silica",
+  "axes": {
+    "x": {
+      "analyte": "SiO2",
+      "unit": "wt%",
+      "limits": [35.0, 90.0]
+    },
+    "y": {
+      "formula": "Na2O + K2O",
+      "unit": "wt%",
+      "limits": [0.0, 20.0]
+    }
+  },
+  "applicability": {
+    "rock_domain": "volcanic",
+    "composition_basis": "volatile-free 100% basis recommended",
+    "not_for": [
+      "plutonic-rock IUGS classification",
+      "carbonatites",
+      "kimberlites",
+      "lamproites",
+      "strongly altered compositions without independent review"
+    ]
+  },
+  "source": {
+    "classification": "Le Maitre, R.W. (ed.) et al. (2002), Igneous Rocks: A Classification and Glossary of Terms, 2nd ed.",
+    "classification_doi": "10.1017/CBO9780511535581",
+    "boundary_construction": "Le Bas, M.J., Le Maitre, R.W. and Woolley, A.R. (1992), The construction of the Total Alkali-Silica chemical classification of volcanic rocks.",
+    "boundary_doi": "10.1007/BF01160698",
+    "note": "Volcanic names are used. The T field remains Trachyte/Trachydacite and U1 remains Tephrite/Basanite because those subtypes require additional normative information."
+  },
+  "crosscheck": {
+    "project": "pyrolite",
+    "release": "v0.3.7",
+    "release_commit": "ab651b448ecd2ce1bc22d752b80a977a1f4dd1ca",
+    "path": "pyrolite/data/models/TAS/config_lemaitre_combined.json",
+    "verification_date": "2026-07-29",
+    "note": "Polygon vertices were checked against the pinned LeMaitreCombined configuration; volcanic field names and unresolved subtype labels are recorded explicitly here."
+  },
+  "boundary_policy": {
+    "point_on_boundary": "review_required",
+    "tolerance_wt_percent": 1e-09,
+    "outside_model": "unclassified"
+  },
+  "fields": [
+    {
+      "id": "F",
+      "name": "Foidite",
+      "plot_label": "Foidite",
+      "label_position": [39.0, 11.0],
+      "polygon": [[35.0, 9.0], [37.0, 14.0], [52.5, 18.0], [52.5, 14.0], [48.4, 11.5], [45.0, 9.4], [41.0, 7.0], [41.0, 3.0], [37.0, 3.0]]
+    },
+    {
+      "id": "Pc",
+      "name": "Picrobasalt",
+      "plot_label": "Picro-\nbasalt",
+      "label_position": [43.0, 1.4],
+      "polygon": [[41.0, 3.0], [45.0, 3.0], [45.0, 2.0], [45.0, 0.0], [41.0, 0.0]]
+    },
+    {
+      "id": "B",
+      "name": "Basalt",
+      "plot_label": "Basalt",
+      "label_position": [48.5, 2.4],
+      "polygon": [[45.0, 0.0], [45.0, 5.0], [52.0, 5.0], [52.0, 0.0]]
+    },
+    {
+      "id": "O1",
+      "name": "Basaltic andesite",
+      "plot_label": "Basaltic\nandesite",
+      "label_position": [54.5, 2.7],
+      "polygon": [[52.0, 0.0], [52.0, 5.0], [57.0, 5.9], [57.0, 0.0]]
+    },
+    {
+      "id": "O2",
+      "name": "Andesite",
+      "plot_label": "Andesite",
+      "label_position": [60.0, 3.0],
+      "polygon": [[57.0, 0.0], [57.0, 5.9], [63.0, 7.0], [63.0, 0.0]]
+    },
+    {
+      "id": "O3",
+      "name": "Dacite",
+      "plot_label": "Dacite",
+      "label_position": [66.2, 4.2],
+      "polygon": [[63.0, 0.0], [63.0, 7.0], [69.0, 8.0], [77.3, 0.0]]
+    },
+    {
+      "id": "R",
+      "name": "Rhyolite",
+      "plot_label": "Rhyolite",
+      "label_position": [75.0, 9.3],
+      "polygon": [[69.0, 8.0], [69.0, 13.0], [85.9, 6.8], [87.5, 4.7], [77.3, 0.0]]
+    },
+    {
+      "id": "S1",
+      "name": "Trachybasalt",
+      "plot_label": "Trachy-\nbasalt",
+      "label_position": [49.2, 5.8],
+      "polygon": [[45.0, 5.0], [49.4, 7.3], [52.0, 5.0]]
+    },
+    {
+      "id": "S2",
+      "name": "Basaltic trachyandesite",
+      "plot_label": "Basaltic\ntrachyandesite",
+      "label_position": [53.5, 7.2],
+      "polygon": [[49.4, 7.3], [53.0, 9.3], [57.0, 5.9], [52.0, 5.0]]
+    },
+    {
+      "id": "S3",
+      "name": "Trachyandesite",
+      "plot_label": "Trachy-\nandesite",
+      "label_position": [58.4, 8.5],
+      "polygon": [[53.0, 9.3], [57.6, 11.7], [61.0, 8.6], [63.0, 7.0], [57.0, 5.9]]
+    },
+    {
+      "id": "T",
+      "name": "Trachyte/Trachydacite",
+      "plot_label": "Trachyte/\nTrachydacite",
+      "label_position": [65.2, 10.7],
+      "polygon": [[57.6, 11.7], [61.0, 13.5], [63.0, 16.2], [69.0, 13.0], [69.0, 8.0], [63.0, 7.0], [61.0, 8.6]]
+    },
+    {
+      "id": "U1",
+      "name": "Tephrite/Basanite",
+      "plot_label": "Tephrite/\nBasanite",
+      "label_position": [44.0, 5.7],
+      "polygon": [[41.0, 3.0], [41.0, 7.0], [45.0, 9.4], [49.4, 7.3], [45.0, 5.0], [45.0, 3.0]]
+    },
+    {
+      "id": "U2",
+      "name": "Phonotephrite",
+      "plot_label": "Phono-\ntephrite",
+      "label_position": [48.6, 9.4],
+      "polygon": [[45.0, 9.4], [48.4, 11.5], [53.0, 9.3], [49.4, 7.3]]
+    },
+    {
+      "id": "U3",
+      "name": "Tephriphonolite",
+      "plot_label": "Tephri-\nphonolite",
+      "label_position": [53.4, 11.7],
+      "polygon": [[48.4, 11.5], [52.5, 14.0], [57.6, 11.7], [53.0, 9.3]]
+    },
+    {
+      "id": "Ph",
+      "name": "Phonolite",
+      "plot_label": "Phonolite",
+      "label_position": [57.6, 14.5],
+      "polygon": [[52.5, 14.0], [52.5, 18.0], [57.0, 18.0], [63.0, 16.2], [61.0, 13.5], [57.6, 11.7]]
+    }
+  ]
+}

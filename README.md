@@ -3,7 +3,7 @@
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
 公开的 v0.1.0 只提供球粒陨石标准化 REE 配分图。
-`feature/spider-diagram-v0.2` 分支是已完成人工审核的 v0.2.0 发布候选版：保留 REE，并新增原始地幔或 N-MORB 标准化微量元素蛛网图。TAS、Harker 和其他图解仍不在本版本范围内。
+v0.2.0 蛛网图工作流已经完成人工审核。当前本地 `feature/harker-tas-v0.3` 分支是 v0.3.0 审核候选版：保留前两类图件，并新增 Harker 变化图和带适用性保护的火山岩 TAS 分类图。该分支在用户审核前不会上传 GitHub。
 
 ## 当前可以做什么
 
@@ -14,14 +14,16 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 使用 Sun & McDonough（1989）C1 球粒陨石值标准化 La–Lu；
 - 使用 Sun & McDonough（1989）原始地幔、脚注明确修改的原始地幔或 N-MORB 值生成微量元素蛛网图；
 - 对明确标为 wt% 的 `K2O`、`P2O5`、`TiO2` 作可追溯的元素 ppm 换算；
-- 生成投稿尺寸的 REE 配分图或蛛网图，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
+- 以 SiO2 或用户指定变量为横轴，一次生成一幅或多幅 Harker 变化图；
+- 使用 SiO2 与 Na2O + K2O 绘制火山岩 TAS 图，并输出逐样品分类与边界复核状态；
+- 生成投稿尺寸的 REE、蛛网图、Harker 或 TAS 图件，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
 - 同步输出实际绘图数据 CSV 和机器可读的 JSON 运行报告；
 - 可选择完整四边框，以及经过碰撞检查的图内图例；
 - 全程在本地处理数据，绘图脚本不请求网络服务。
 
 ## 安装到 Codex
 
-以下公开仓库的默认分支目前仍是经过审核的 v0.1.0 REE 版本；v0.2.0 蛛网图发布候选版通过功能分支和 Pull Request 接受合并检查：
+以下公开仓库的默认分支目前仍是经过审核的 v0.1.0 REE 版本；v0.2.0 蛛网图通过功能分支和 Pull Request 接受合并检查。v0.3.0 的 Harker/TAS 代码仍处于本地审核阶段：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -74,6 +76,29 @@ py -m venv .venv
 
 默认方案为原文脚注推荐的 `pm-sm89-modified`；也可以明确选择 Table 1 印刷版 `pm-sm89` 或 `nmorb-sm89`。程序不会根据曲线形状替用户猜测标准化方案。
 
+检查 Harker/TAS 所需的主量元素数据：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\inspect_major_data.py skills\geoskills\examples\synthetic_major_element_data.csv
+```
+
+生成默认八面板 Harker 图：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\plot_harker.py skills\geoskills\examples\synthetic_major_element_data.csv --x SiO2 --y TiO2,Al2O3,Fe2O3T,MgO,CaO,Na2O,K2O,P2O5 --output-dir outputs\harker_figure
+```
+
+`--x` 和 `--y` 都可以按数据列自定义。程序默认不画回归线，也不会把相关性直接解释为分离结晶或岩浆混合。
+默认八面板会自动排成紧凑的 4 × 2 网格，并共用一个横轴标题；较长的分组图例会自动换行，避免超出图幅。
+
+生成火山岩 TAS 图：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\plot_tas.py skills\geoskills\examples\synthetic_major_element_data.csv --confirm-volcanic --composition-basis anhydrous-normalized --output-dir outputs\tas_figure
+```
+
+TAS 命令要求明确确认样品属于火山岩，并声明数据是无水归一化值还是原始报告值。程序不会把侵入岩、碳酸岩或其他不适用样品静默套入火山岩名称。
+
 程序不会修改原始表格。重复使用同一输出名称时，只有显式加入 `--overwrite` 才会替换已有结果。
 
 ## 项目结构
@@ -87,7 +112,9 @@ GeoSkills/
 │   └── geoskills/
 │       ├── SKILL.md
 │       ├── agents/openai.yaml
-│       ├── assets/normalization/
+│       ├── assets/
+│       │   ├── normalization/
+│       │   └── classification/
 │       ├── examples/
 │       ├── references/
 │       └── scripts/
@@ -100,12 +127,15 @@ GeoSkills/
 - 缺失值和低于检出限状态保留为曲线断点；零和负数会阻止对数坐标绘图。
 - 标准化表包含文献、DOI、表格位置、版本和核对记录。
 - 原始地幔表保留文献 Table 1 的 Cs、Pb 数值，并明确提示原文脚注中的 modified 版本；程序不会静默混用。
+- Harker 图只展示变量间的协变关系；默认不添加拟合线，也不从相关性单独推断岩浆过程。
+- TAS 边界使用带文献与版本信息的本地资产。恰好位于边界上的样品标为 `review_required`，不会静默选择一侧。
+- TAS 仅用于明确确认的火山岩；`as-reported` 结果标为初步分类，不能替代无水归一化后的专业判断。
 - 图形可以展示富集程度、斜率和平行性，但不能单独证明岩浆源区、部分熔融、分离结晶或构造环境。
 - `local_data/` 和 `outputs/` 已排除在 Git 之外；不要提交私人或未发表数据。
 
 ## 当前状态
 
-GeoSkills v0.1.0 是仅包含 REE 配分图的公开测试版。v0.2.0 蛛网图发布候选版已通过全部 41 项自动测试、真实数据测试、导出审计和人工图形复核；远端 CI 与 Pull Request 合并完成后再作为稳定版本发布。
+GeoSkills v0.1.0 是仅包含 REE 配分图的公开测试版。v0.2.0 蛛网图发布候选版已通过 41 项自动测试、真实数据测试、导出审计和人工图形复核。v0.3.0 Harker/TAS 候选版已在本地通过 69 项自动测试、已发表数据的 Harker 验证、合成火山岩 TAS 验证、导出审计和人工图面复核；用户确认前不会提交或上传。
 
 ## 许可
 

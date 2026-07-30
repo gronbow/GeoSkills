@@ -9,4 +9,6 @@
 - Write machine-readable results to standard output and concise diagnostics to standard error where practical.
 - Add tests for numerical rules, invalid input, missing values, non-positive values, and exported files.
 - Do not claim the skill is research-ready until scientific fixtures and end-to-end tests pass.
-- Preserve the published v0.1.0 REE workflow. GeoSkills v0.2.0 may add only trace-element spider diagrams; defer TAS, Harker, and other diagram families to later reviewed versions.
+- Preserve the published v0.1.0 REE workflow and the reviewed v0.2.0 spider workflow.
+- GeoSkills v0.3.0 may add Harker variation diagrams and volcanic TAS classification only; defer isotope, tectonic-discrimination, and other diagram families to later reviewed versions.
+- Require explicit volcanic applicability and composition-basis declarations before TAS plotting; never silently classify intrusive or otherwise out-of-scope samples.
