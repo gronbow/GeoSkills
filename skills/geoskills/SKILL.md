@@ -3,13 +3,13 @@ name: geoskills
 description: "Inspect whole-rock geochemical tables and create validated, submission-oriented REE patterns, trace-element spider diagrams, Harker variation diagrams, or volcanic TAS classification plots from CSV, TXT, or Excel data. Use GeoSkills to identify sample, group, element, and oxide columns; verify ppm or wt% units and invalid values; apply versioned Sun and McDonough (1989) references; require explicit TAS applicability declarations; export editable SVG/PDF plus 600 dpi TIFF/PNG and exact plotted data; or explain why a table cannot yet be plotted safely. Do not use the current version for isotope, tectonic-discrimination, or other diagram families."
 ---
 
-# GeoSkills v0.3.0 review candidate
+# GeoSkills v0.3.0
 
 Create reproducible REE patterns, trace-element spider diagrams, Harker variation diagrams, and volcanic TAS plots through deterministic local Python scripts. Use the language model to select and explain the workflow, never to calculate normalized ratios or classification fields manually.
 
-## Development status
+## Release status
 
-Treat v0.1.0 REE plotting as the stable published baseline. The v0.2.0 spider workflow has passed scientific fixtures, real-data output, export QA, Skill validation, and user review. Harker and TAS are v0.3.0 review-candidate workflows and must not be described as published until their local review and release process are complete. Do not imply support for isotope or tectonic-discrimination diagrams.
+Treat v0.3.0 as the current released workflow for REE patterns, trace-element spider diagrams, Harker variation diagrams, and guarded volcanic TAS classification. These workflows have passed scientific fixtures, real-data or synthetic-data validation as appropriate, export QA, Skill validation, cross-platform automated tests, and user review. Do not imply support for isotope or tectonic-discrimination diagrams.
 
 ## Route the request
 
@@ -70,7 +70,7 @@ TAS uses `SiO2` versus `Na2O + K2O` in wt%. Never infer volcanic applicability f
 - Convert only explicit `K2O`, `P2O5`, and `TiO2` wt% columns to K, P, and Ti ppm. Record the CIAAW/IUPAC atomic weights, formula, and factor used.
 - Reject finite zero and negative values on logarithmic axes.
 - Preserve the cited Sun and McDonough (1989) incompatibility order even when the user selects a subset.
-- Use only the versioned local assets `PrimitiveMantle_SM89`, `PrimitiveMantleModified_SM89`, and `NMORB_SM89` for the spider draft.
+- Use only the versioned local assets `PrimitiveMantle_SM89`, `PrimitiveMantleModified_SM89`, and `NMORB_SM89` for the spider workflow.
 - Use the source footnote's modified primitive mantle as the spider default. Keep the printed and modified variants separate; do not silently replace Cs or Pb, and warn when an affected element is plotted with the printed variant.
 - Set log limits from finite positive ratios, add a declared margin, round to clean decimal bounds without clipping, and show unity only when it lies inside the range.
 - Use the versioned `TAS_LeMaitre2002_Volcanic_CombinedT` asset; keep `Trachyte/Trachydacite` and `Tephrite/Basanite` unresolved when normative information is absent.

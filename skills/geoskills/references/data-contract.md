@@ -1,12 +1,12 @@
 # REE input data contract
 
-This file records the first-release rules for data accepted by `geoskills` v1.
+This file records the REE input rules introduced in GeoSkills v0.1.0 and retained in v0.3.0.
 
 ## Required information
 
 - One sample identifier column with a non-empty value for every row.
 - REE concentration columns selected from `La, Ce, Pr, Nd, Sm, Eu, Gd, Tb, Dy, Ho, Er, Tm, Yb, Lu`.
-- A confirmed concentration unit. The first release accepts ppm.
+- A confirmed concentration unit. Direct REE concentrations are accepted in ppm.
 
 ## Optional information
 
@@ -30,7 +30,7 @@ This file records the first-release rules for data accepted by `geoskills` v1.
 - Preserve blank cells as missing values.
 - Treat strings such as `<0.01`, `BDL`, and `n.d.` as detection-limit states, not as zero.
 - Reject zero and negative values for logarithmic REE plots.
-- Do not interpolate missing REE concentrations in the first release.
+- Do not interpolate missing REE concentrations.
 
 ## File handling
 

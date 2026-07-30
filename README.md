@@ -2,8 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-公开的 v0.1.0 只提供球粒陨石标准化 REE 配分图。
-v0.2.0 蛛网图工作流已经完成人工审核。当前本地 `feature/harker-tas-v0.3` 分支是 v0.3.0 审核候选版：保留前两类图件，并新增 Harker 变化图和带适用性保护的火山岩 TAS 分类图。该分支在用户审核前不会上传 GitHub。
+当前正式版本为 [v0.3.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.3.0)，包含球粒陨石标准化 REE 配分图、微量元素蛛网图、Harker 变化图，以及带适用性保护的火山岩 TAS 分类图。
 
 ## 当前可以做什么
 
@@ -23,26 +22,30 @@ v0.2.0 蛛网图工作流已经完成人工审核。当前本地 `feature/harker
 
 ## 安装到 Codex
 
-以下公开仓库的默认分支目前仍是经过审核的 v0.1.0 REE 版本；v0.2.0 蛛网图通过功能分支和 Pull Request 接受合并检查。v0.3.0 的 Harker/TAS 代码仍处于本地审核阶段：
+公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.3.0：
 
 ```text
 https://github.com/gronbow/GeoSkills
 ```
 
-也可以手动把 `skills/geoskills` 文件夹复制到个人 Skill 目录：
+也可以手动把 `skills/geoskills` 文件夹复制到 Codex 的个人 Skill 目录：
 
 ```text
-%USERPROFILE%\.agents\skills\geoskills
+%USERPROFILE%\.codex\skills\geoskills
 ```
+
+如果设置了 `CODEX_HOME`，则复制到 `%CODEX_HOME%\skills\geoskills`。复制完成后，重新开启一个 Codex 任务即可使用。
 
 ## Windows 快速开始
 
-在 PowerShell 中进入项目目录，安装依赖：
+需要 Python 3.11 或 3.12。先运行 `python --version` 确认版本，然后在 PowerShell 中进入项目目录并安装依赖：
 
 ```powershell
-py -m venv .venv
+python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
 ```
+
+如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
 先检查示例数据：
 
@@ -106,6 +109,7 @@ TAS 命令要求明确确认样品属于火山岩，并声明数据是无水归�
 ```text
 GeoSkills/
 ├── README.md
+├── CHANGELOG.md
 ├── AGENTS.md
 ├── requirements-dev.txt
 ├── skills/
@@ -135,7 +139,7 @@ GeoSkills/
 
 ## 当前状态
 
-GeoSkills v0.1.0 是仅包含 REE 配分图的公开测试版。v0.2.0 蛛网图发布候选版已通过 41 项自动测试、真实数据测试、导出审计和人工图形复核。v0.3.0 Harker/TAS 候选版已在本地通过 69 项自动测试、已发表数据的 Harker 验证、合成火山岩 TAS 验证、导出审计和人工图面复核；用户确认前不会提交或上传。
+GeoSkills v0.3.0 是当前正式版本。它整合了 v0.1.0 的 REE 工作流、经过审核的微量元素蛛网图，以及新增的 Harker 和火山岩 TAS 工作流。完整版本通过了 69 项自动测试、已发表数据的 Harker 验证、合成火山岩 TAS 验证、导出审计、人工图面复核，以及 Ubuntu/Windows 上 Python 3.11/3.12 的 GitHub Actions 检查。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
