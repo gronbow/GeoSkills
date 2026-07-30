@@ -9,4 +9,4 @@
 - Write machine-readable results to standard output and concise diagnostics to standard error where practical.
 - Add tests for numerical rules, invalid input, missing values, non-positive values, and exported files.
 - Do not claim the skill is research-ready until scientific fixtures and end-to-end tests pass.
-- Keep GeoSkills v1 limited to REE pattern plots; do not add other geochemical diagram types before a versioned scope change.
+- Preserve the published v0.1.0 REE workflow. GeoSkills v0.2.0 may add only trace-element spider diagrams; defer TAS, Harker, and other diagram families to later reviewed versions.

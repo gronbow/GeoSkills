@@ -224,6 +224,9 @@ def build_figure(
     axes_frame: str = "open",
     legend_layout: str = "outside",
     grid_style: str = "none",
+    y_label: str = "Sample / C1 chondrite",
+    reference_note: str | None = None,
+    x_tick_labelsize: float | None = None,
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
     if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
@@ -314,10 +317,12 @@ def build_figure(
     ax.set_xlim(-0.4, len(elements) - 0.6)
     ax.set_xticks(x)
     ax.set_xticklabels(elements)
+    if x_tick_labelsize is not None:
+        ax.tick_params(axis="x", labelsize=x_tick_labelsize)
     # Element symbols already define the categorical x axis; omitting a repeated
     # x-axis title preserves space and improves readability after journal scaling.
     ax.set_xlabel("")
-    ax.set_ylabel("Sample / C1 chondrite")
+    ax.set_ylabel(y_label)
     ax.tick_params(axis="both", which="major", direction="out", length=3)
     ax.tick_params(axis="y", which="minor", direction="out", length=1.8)
     ax.yaxis.set_major_locator(LogLocator(base=10))
@@ -505,7 +510,11 @@ def build_figure(
             legend_position = "inside_upper_right"
     else:
         add_outside_legends()
-    reference_note = "Normalization: Sun & McDonough (1989) C1 chondrite"
+    reference_note = (
+        reference_note
+        if reference_note is not None
+        else "Normalization: Sun & McDonough (1989) C1 chondrite"
+    )
     if unity_line_visible:
         reference_note += "; dashed line = unity."
     else:
