@@ -32,5 +32,10 @@ jobs:
       - name: Compile scripts
         run: python -m compileall -q skills/geoskills/scripts tests
 
+      - name: Check unified local workflow
+        run: |
+          python skills/geoskills/scripts/geoskills.py version
+          python skills/geoskills/scripts/geoskills.py self-check --dev
+
       - name: Run tests
         run: python -m pytest -q

@@ -279,6 +279,101 @@ def test_full_frame_inside_auto_legend_avoids_data() -> None:
         sys.path.remove(scripts)
 
 
+def test_inside_auto_compacts_long_group_and_sample_legends() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        elements = [
+            "Rb",
+            "Ba",
+            "Th",
+            "U",
+            "Nb",
+            "Ta",
+            "K",
+            "La",
+            "Ce",
+            "Pb",
+            "Pr",
+            "Sr",
+            "P",
+            "Nd",
+            "Sm",
+            "Zr",
+            "Hf",
+            "Eu",
+            "Ti",
+            "Gd",
+            "Tb",
+            "Dy",
+            "Y",
+            "Ho",
+            "Er",
+            "Tm",
+            "Yb",
+            "Lu",
+        ]
+        sample_count = 11
+        normalized = pd.DataFrame(
+            {
+                "Sample": [
+                    f"SYN-{index + 1:02d}" for index in range(sample_count)
+                ],
+                "Group": [
+                    f"Long synthetic group {index % 4 + 1} "
+                    + "X" * 32
+                    for index in range(sample_count)
+                ],
+                **{
+                    f"{element}_N": [
+                        300.0
+                        * np.exp(-0.10 * element_index)
+                        * (1.0 + 0.10 * sample_index)
+                        * (
+                            1.0
+                            + 0.30
+                            * np.sin(
+                                (element_index + sample_index) / 2.5
+                            )
+                        )
+                        for sample_index in range(sample_count)
+                    ]
+                    for element_index, element in enumerate(elements)
+                },
+            }
+        )
+
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            elements,
+            "PM_synthetic",
+            width_mm=183,
+            height_mm=120,
+            axes_frame="full",
+            legend_layout="inside-auto",
+            reference_note="Synthetic normalization for layout testing",
+        )
+
+        assert plot_info["legend_position"] == "inside_upper_right"
+        assert plot_info["legend_fallback"] is False
+        assert plot_info["inside_legend_strategy"] in {
+            "compact-two-column",
+            "compact-wide",
+        }
+        assert plot_info["inside_legend_collision_free"] is True
+        axes = figure.axes[0]
+        assert axes.get_legend() is not None
+        assert len(axes.artists) == 1
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
 def test_subunity_to_enriched_pattern_exports_successfully(tmp_path: Path) -> None:
     input_path = tmp_path / "cross_unity.csv"
     output_dir = tmp_path / "figures"
@@ -385,13 +480,14 @@ def test_inside_auto_legend_falls_back_when_data_fill_the_axes() -> None:
         from plot_ree import build_figure
 
         elements = ["La", "Ce", "Pr", "Nd", "Sm", "Eu", "Gd"]
+        values = np.geomspace(1.0, 1000.0, 8)
         normalized = pd.DataFrame(
             {
-                "Sample": ["S1", "S2", "S3", "S4"],
-                "Group": ["A", "A", "B", "B"],
+                "Sample": [f"S{index + 1}" for index in range(8)],
+                "Group": [f"G{index % 4 + 1}" for index in range(8)],
                 **{
-                    f"{element}_N": [1000.0, 930.0, 860.0, 790.0]
-                    for element in elements
+                    f"{element}_N": np.roll(values, index)
+                    for index, element in enumerate(elements)
                 },
             }
         )

@@ -1,102 +1,94 @@
 ---
 name: geoskills
-description: "Inspect whole-rock geochemical tables and create validated, submission-oriented REE patterns, trace-element spider diagrams, Harker variation diagrams, or volcanic TAS classification plots from CSV, TXT, or Excel data. Use GeoSkills to identify sample, group, element, and oxide columns; verify ppm or wt% units and invalid values; apply versioned Sun and McDonough (1989) references; require explicit TAS applicability declarations; export editable SVG/PDF plus 600 dpi TIFF/PNG and exact plotted data; or explain why a table cannot yet be plotted safely. Do not use the current version for isotope, tectonic-discrimination, or other diagram families."
+description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, and guarded volcanic TAS classification; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
 ---
 
-# GeoSkills v0.3.0
+# GeoSkills v0.4 workflow
 
-Create reproducible REE patterns, trace-element spider diagrams, Harker variation diagrams, and volcanic TAS plots through deterministic local Python scripts. Use the language model to select and explain the workflow, never to calculate normalized ratios or classification fields manually.
+Use deterministic local Python for all table reading, normalization, classification, plotting, and export. The language model may guide choices and explain results, but must not calculate normalized ratios, convert oxides, or classify TAS fields manually.
 
-## Release status
+## Default workflow
 
-Treat v0.3.0 as the current released workflow for REE patterns, trace-element spider diagrams, Harker variation diagrams, and guarded volcanic TAS classification. These workflows have passed scientific fixtures, real-data or synthetic-data validation as appropriate, export QA, Skill validation, cross-platform automated tests, and user review. Do not imply support for isotope or tectonic-discrimination diagrams.
+Prefer the unified `scripts/geoskills.py` workflow:
 
-## Route the request
+1. Run `self-check`.
+2. Inspect the user's table locally.
+3. Draft a versioned YAML recipe with explicit input layout, column mappings, units, output profile, tasks, and confirmations.
+4. Keep every unverified confirmation as `false`. Never mark a scientific or data confirmation `true` merely to make the workflow continue.
+5. Run `plan`. This checks the recipe, input, selected analytes, scientific assets, and expected outputs without creating figures.
+6. Explain any `blocked` or `needs_confirmation` issue in plain language. Revise only after the user supplies the missing information.
+7. Show the ready plan's diagram types, reference choices, dimensions, output profile, and plan ID. Obtain the user's approval before `run`.
+8. Run the approved, unchanged plan.
+9. Inspect final-size PNG/TIFF output, JSON reports, and Chinese QA summaries before returning the bundle.
 
-- For chondrite-normalized La–Lu patterns, use the REE workflow.
-- For multi-element primitive-mantle or N-MORB-normalized patterns, use the spider workflow.
-- For one X variable against one or more oxides/elements, use the Harker workflow.
-- For volcanic-rock classification by SiO2 and total alkalis, use the TAS workflow.
-- Stop and clarify when the requested diagram, unit, reference composition, sample column, or group column is ambiguous.
+Read [references/workflow-and-recipe.md](references/workflow-and-recipe.md) when creating or explaining a recipe.
 
-## REE workflow
+## Route each task
 
-1. Run `scripts/check_environment.py`.
-2. Run `scripts/inspect_data.py INPUT`.
-3. Confirm the worksheet, sample identifier, optional group, ppm units, and REE mapping.
-4. Run `scripts/normalize_ree.py INPUT --output OUTPUT.csv`.
-5. Run `scripts/plot_ree.py INPUT --output-dir OUTPUT_DIR`.
-6. Inspect the final-size PNG/TIFF and return the complete figure bundle.
+- `ree`: chondrite-normalized La–Lu patterns.
+- `spider`: multi-element patterns normalized to `pm-sm89`, `pm-sm89-modified`, or `nmorb-sm89`.
+- `harker`: one validated X analyte against one or more validated Y analytes.
+- `tas`: volcanic-rock classification using SiO2 and Na2O + K2O.
 
-Use `--axes-frame full --legend-layout inside-auto` when a four-sided frame and collision-checked in-axes legend are requested. The plotter safely falls back to an outside-right legend.
+Stop if the requested diagram is outside this fixed registry. Do not imply support for isotope, tectonic-discrimination, or other diagram families.
 
-## Spider workflow
+## Scientific confirmation gates
 
-1. Run `scripts/check_environment.py`.
-2. Run `scripts/inspect_spider_data.py INPUT`.
-3. Confirm the worksheet, sample identifier, optional group, direct elemental ppm columns, and any supported oxide columns.
-4. Choose `pm-sm89`, `pm-sm89-modified`, or `nmorb-sm89`; do not select a reference from the apparent shape of the data.
-5. Run `scripts/normalize_spider.py INPUT --reference pm-sm89-modified --output OUTPUT.csv`.
-6. Run `scripts/plot_spider.py INPUT --reference pm-sm89-modified --output-dir OUTPUT_DIR`.
-7. Inspect the final-size PNG/TIFF, the normalized source-data CSV, conversion records, warnings, and JSON report.
+Require the user or a qualified reviewer to confirm:
 
-The spider plot defaults to a full frame, no background grid, and `inside-auto` legend placement. It exports editable SVG/PDF, 600 dpi LZW TIFF, 600 dpi PNG, exact normalized source data, and a machine-readable report from the same figure object.
+- input structure and worksheet;
+- sample and optional group columns;
+- canonical-to-source column mappings;
+- wt% for major oxides and ppm for direct elemental concentrations;
+- whether plotted source data may be retained;
+- for TAS, that the samples are volcanic and whether the basis is `anhydrous-normalized` or `as-reported`.
 
-## Harker workflow
+Never infer TAS applicability from sample names or values. Do not apply volcanic TAS fields to plutonic rocks, carbonatites, kimberlites, lamproites, or strongly altered compositions. Treat `as-reported` TAS results as provisional and boundary cases as requiring review.
 
-1. Run `scripts/check_environment.py`.
-2. Run `scripts/inspect_major_data.py INPUT`.
-3. Confirm the worksheet, sample identifier, optional group, the X variable, requested Y variables, and each analyte's unit.
-4. Run `scripts/plot_harker.py INPUT --x SiO2 --y TiO2,Al2O3,Fe2O3T,MgO,CaO,Na2O,K2O,P2O5 --output-dir OUTPUT_DIR`.
-5. Inspect every panel at final size and return the SVG/PDF/TIFF/PNG, plotted-data CSV, and JSON report.
+## Data and value safeguards
 
-`SiO2` is the conventional default X variable. The user may select another validated analyte explicitly. Do not add regression lines or assign a petrogenetic process from correlation alone.
+- Preserve blanks and below-detection-limit states as missing. Never replace them with zero or an invented detection limit.
+- Reject negative concentrations and duplicate analyte mappings.
+- Permit true zero only on linear Harker or TAS axes.
+- Reject finite zero and negative values on logarithmic REE or spider axes.
+- Convert only explicit `K2O`, `P2O5`, and `TiO2` wt% columns to K, P, and Ti ppm, using the reviewed deterministic conversion and recording its provenance.
+- Preserve the Sun and McDonough (1989) element order even for a subset.
+- Do not select a normalization reference from the apparent curve shape.
+- Keep the printed and footnote-modified primitive-mantle variants separate.
+- Round Harker and logarithmic limits outward without clipping data. Keep TAS at the model's fixed limits.
 
-## TAS workflow
+## Figure and interpretation safeguards
 
-1. Run `scripts/check_environment.py`.
-2. Run `scripts/inspect_major_data.py INPUT`.
-3. Confirm that the samples are volcanic and ask whether values are already anhydrous-normalized or should be plotted as reported.
-4. Run `scripts/plot_tas.py INPUT --confirm-volcanic --composition-basis anhydrous-normalized --output-dir OUTPUT_DIR`.
-5. Inspect the final-size figure, classification CSV, boundary/outside statuses, warnings, and JSON report.
+- Use colour plus marker or line style so colour is not the only identifier.
+- Keep editable text in SVG/PDF and export TIFF/PNG from the same figure.
+- Use full borders and collision-checked in-axes legends in the unified workflow.
+- Describe only visible enrichment, depletion, slope, anomaly, clustering, scatter, and covariation.
+- Do not assign a unique source, melting process, mineral control, alteration history, fractional-crystallization path, or tectonic setting from one diagram.
+- Treat Harker correlation as covariation, not proof of a petrogenetic process.
 
-TAS uses `SiO2` versus `Na2O + K2O` in wt%. Never infer volcanic applicability from sample names. Do not use the volcanic fields for plutonic rocks, carbonatites, kimberlites, lamproites, or strongly altered compositions. Treat `as-reported` classifications as provisional and points on a boundary as `review_required`.
+Read the relevant method file before explaining a scientific result:
 
-## Scientific guardrails
+- REE: [references/scientific-method.md](references/scientific-method.md)
+- Spider: [references/spider-method.md](references/spider-method.md)
+- Harker/TAS: [references/major-elements-and-tas.md](references/major-elements-and-tas.md)
 
-- Require explicit wt% units for major oxides and ppm units for direct elemental concentrations.
-- Preserve blanks and below-detection-limit states as missing observations. Never replace them with zero or an invented detection limit.
-- Reject negative concentrations and duplicate analyte mappings. Permit true zero only on linear Harker/TAS axes.
-- Convert only explicit `K2O`, `P2O5`, and `TiO2` wt% columns to K, P, and Ti ppm. Record the CIAAW/IUPAC atomic weights, formula, and factor used.
-- Reject finite zero and negative values on logarithmic axes.
-- Preserve the cited Sun and McDonough (1989) incompatibility order even when the user selects a subset.
-- Use only the versioned local assets `PrimitiveMantle_SM89`, `PrimitiveMantleModified_SM89`, and `NMORB_SM89` for the spider workflow.
-- Use the source footnote's modified primitive mantle as the spider default. Keep the printed and modified variants separate; do not silently replace Cs or Pb, and warn when an affected element is plotted with the printed variant.
-- Set log limits from finite positive ratios, add a declared margin, round to clean decimal bounds without clipping, and show unity only when it lies inside the range.
-- Use the versioned `TAS_LeMaitre2002_Volcanic_CombinedT` asset; keep `Trachyte/Trachydacite` and `Tephrite/Basanite` unresolved when normative information is absent.
-- Round Harker limits outward to clean values without clipping data. Keep TAS at its declared fixed model limits so the field geometry is not distorted.
-- Use colour plus line style for groups and sample symbols so colour is not the sole identifier.
-- Keep user data local; plotting scripts must not make network requests.
-- Describe enrichment, depletion, slopes, covariation, and visible anomalies conservatively. Do not assign a unique source, melting process, mineral control, alteration history, or tectonic setting from one plot.
+## Output and privacy
 
-## Related resources
+Use `shareable` unless the user explicitly needs the exact plotted-data CSV:
 
-| Resource | Use it when |
-|---|---|
-| [scripts/inspect_data.py](scripts/inspect_data.py) | Inspect REE input |
-| [scripts/normalize_ree.py](scripts/normalize_ree.py) | Normalize REE to C1 chondrite |
-| [scripts/plot_ree.py](scripts/plot_ree.py) | Create the REE figure bundle |
-| [scripts/inspect_spider_data.py](scripts/inspect_spider_data.py) | Inspect trace elements, units, BDL states, and supported oxides |
-| [scripts/normalize_spider.py](scripts/normalize_spider.py) | Normalize trace elements to primitive mantle or N-MORB |
-| [scripts/plot_spider.py](scripts/plot_spider.py) | Create the spider-diagram figure bundle |
-| [assets/normalization/primitive-mantle-sm89.json](assets/normalization/primitive-mantle-sm89.json) | Audit primitive-mantle values and the Cs/Pb footnote |
-| [assets/normalization/primitive-mantle-modified-sm89.json](assets/normalization/primitive-mantle-modified-sm89.json) | Audit the explicit footnote-modified Cs/Pb variant |
-| [assets/normalization/nmorb-sm89.json](assets/normalization/nmorb-sm89.json) | Audit N-MORB values |
-| [scripts/inspect_major_data.py](scripts/inspect_major_data.py) | Inspect major/trace analytes, units, missing states, and Harker/TAS readiness |
-| [scripts/plot_harker.py](scripts/plot_harker.py) | Create customizable Harker grids |
-| [scripts/plot_tas.py](scripts/plot_tas.py) | Create guarded volcanic TAS figures and classifications |
-| [assets/classification/tas-lemaitre-2002.json](assets/classification/tas-lemaitre-2002.json) | Audit TAS fields, labels, applicability, and reference provenance |
-| [references/data-contract.md](references/data-contract.md) | Audit the REE input contract |
-| [references/scientific-method.md](references/scientific-method.md) | Audit the REE method |
-| [references/spider-method.md](references/spider-method.md) | Audit spider input, normalization, conversion, plotting, and interpretation rules |
-| [references/major-elements-and-tas.md](references/major-elements-and-tas.md) | Audit Harker/TAS input, plotting, classification, and interpretation rules |
+- `shareable` returns SVG, PDF, TIFF, PNG, JSON, and QA Markdown without the plotted-data CSV.
+- `local-reproducible` also retains the plotted-data CSV and marks it sensitive.
+
+Reports must not expose absolute paths, sample identifiers, or source values. Keep all processing local; do not send user tables to a model, analytics service, or third-party server. Clearly disclose any future remote processing before it occurs.
+
+The workflow commits a multi-task output directory only after every task succeeds. Do not bypass stale-plan checks or overwrite an existing bundle unless the user explicitly approves replacement.
+
+## Legacy compatibility
+
+The reviewed v0.3 scripts remain available for regression checks and advanced one-off debugging:
+
+- `inspect_data.py`, `normalize_ree.py`, `plot_ree.py`
+- `inspect_spider_data.py`, `normalize_spider.py`, `plot_spider.py`
+- `inspect_major_data.py`, `plot_harker.py`, `plot_tas.py`
+
+Prefer the unified recipe workflow for ordinary use because it adds explicit mapping, plan review, privacy profiles, and all-or-nothing multi-task output. Do not silently mix unified and legacy outputs in one result bundle.

@@ -143,6 +143,36 @@ def test_missing_pair_is_reported_not_imputed(tmp_path: Path) -> None:
     assert any(item["code"] == "W651" for item in report["issues"])
 
 
+def test_panel_limits_use_only_complete_xy_pairs(tmp_path: Path) -> None:
+    input_path = tmp_path / "unpaired_outlier.csv"
+    output = tmp_path / "unpaired_outlier"
+    frame = pd.read_csv(EXAMPLE)
+    frame.loc[0, "SiO2_wt%"] = None
+    frame.loc[0, "MgO_wt%"] = 1000.0
+    frame.to_csv(input_path, index=False)
+
+    result, report = run_plotter(
+        input_path,
+        "--output-dir",
+        output,
+        "--stem",
+        "unpaired_outlier",
+        "--y",
+        "MgO,CaO",
+        "--dpi",
+        "90",
+    )
+
+    mg_panel = next(
+        panel
+        for panel in report["plot"]["panels"]
+        if panel["y"] == "MgO"
+    )
+    assert result.returncode == 0
+    assert mg_panel["complete_pairs"] == len(frame) - 1
+    assert mg_panel["y_limits"]["upper"] < 20
+
+
 def test_existing_bundle_requires_explicit_overwrite(
     tmp_path: Path,
 ) -> None:

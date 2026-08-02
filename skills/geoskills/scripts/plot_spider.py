@@ -26,6 +26,10 @@ from normalize_spider import (
     resolve_reference,
     spider_reference_summary,
 )
+from geoskills_core.plotting import (
+    PUBLICATION_DOUBLE_COLUMN,
+    publication_styled,
+)
 from plot_ree import (
     AXES_FRAMES,
     DEFAULT_LOG_Y_MARGIN,
@@ -99,6 +103,7 @@ def plotting_error(path: Path, message: str) -> dict[str, Any]:
     }
 
 
+@publication_styled(preset_parameter="style_preset")
 def plot_spider_path(
     input_path: Path,
     output_dir: Path,
@@ -117,6 +122,7 @@ def plot_spider_path(
     legend_layout: str = "inside-auto",
     grid_style: str = "none",
     overwrite: bool = False,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
     """Validate input and export a submission-oriented spider-plot bundle."""
     figure = None
@@ -243,6 +249,7 @@ def plot_spider_path(
             y_label=f"Sample / {axis_reference}",
             reference_note=note_reference,
             x_tick_labelsize=6.2,
+            style_preset=style_preset,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -386,6 +393,7 @@ def plot_spider_path(
                 "png_dpi": dpi,
                 "tiff_dpi": dpi,
                 "formats": list(FORMATS),
+                "style_preset": style_preset,
             },
             "oxide_conversions": conversions,
             "plot": plot_info,

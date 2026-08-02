@@ -1,0 +1,74 @@
+# 本示例中的 true 只适用于同目录的合成数据。
+# 替换为自己的数据后，请先将所有 confirmations 改为 false，
+# 完成人工核对后再逐项设为 true；这不表示允许上传数据。
+schema_version: geoskills.recipe/v1
+
+input:
+  file: synthetic_ree_data.csv
+  sheet: null
+  layout: row-per-sample
+
+columns:
+  sample_id: Sample
+  group: Group
+  mapping:
+    La: La_ppm
+    Ce: Ce_ppm
+    Pr: Pr_ppm
+    Nd: Nd_ppm
+    Sm: Sm_ppm
+    Eu: Eu_ppm
+    Gd: Gd_ppm
+    Tb: Tb_ppm
+    Dy: Dy_ppm
+    Ho: Ho_ppm
+    Er: Er_ppm
+    Tm: Tm_ppm
+    Yb: Yb_ppm
+    Lu: Lu_ppm
+  units:
+    major_oxides: wt%
+    trace_elements: ppm
+
+output:
+  directory: generated/geoskills-ree-workflow
+  report_profile: shareable
+
+presets:
+  journal-main:
+    extends: publication-double-column
+    style:
+      width_mm: 183
+      height_mm: 120
+      dpi: 600
+
+confirmations:
+  input_structure_reviewed: true
+  column_mapping_reviewed: true
+  units_reviewed: true
+  plotted_data_export_reviewed: true
+
+tasks:
+  - id: ree-main
+    diagram: ree
+    stem: figure-ree
+    preset: journal-main
+    parameters:
+      reference: chondrite-sm89
+      elements:
+        - La
+        - Ce
+        - Pr
+        - Nd
+        - Sm
+        - Eu
+        - Gd
+        - Tb
+        - Dy
+        - Ho
+        - Er
+        - Tm
+        - Yb
+        - Lu
+      groups: all
+    confirmations: {}

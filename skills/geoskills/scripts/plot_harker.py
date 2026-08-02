@@ -21,6 +21,13 @@ import pandas as pd
 from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator
 
+from geoskills_core.errors import PlottingError
+from geoskills_core.plotting import (
+    GROUP_COLORS,
+    MARKERS,
+    PUBLICATION_DOUBLE_COLUMN,
+    publication_styled,
+)
 from inspect_data import InspectionError, issue
 from inspect_major_data import (
     inspect_major_frame,
@@ -40,15 +47,6 @@ from plot_geochem_common import (
     shareable_file_record,
     validate_export_parameters,
 )
-from plot_ree import GROUP_COLORS, MARKERS, PlottingError
-
-
-plt.rcParams["font.sans-serif"] = [
-    "DejaVu Sans",
-    "Arial",
-    "Liberation Sans",
-]
-
 DEFAULT_X = "SiO2"
 DEFAULT_Y_CANDIDATES = [
     "TiO2",
@@ -187,6 +185,16 @@ def add_shared_group_legend(
     }
 
 
+@publication_styled(
+    overrides={
+        "font.sans-serif": [
+            "DejaVu Sans",
+            "Arial",
+            "Liberation Sans",
+        ]
+    },
+    preset_parameter="style_preset",
+)
 def build_harker_figure(
     frame: pd.DataFrame,
     sample_column: str,
@@ -201,10 +209,28 @@ def build_harker_figure(
     columns: int,
     axes_frame: str,
     margin_fraction: float,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[Any, dict[str, Any]]:
     """Build one Harker grid from validated canonical data."""
+    x_numeric = pd.to_numeric(frame[x_analyte], errors="coerce")
+    y_numeric = {
+        analyte: pd.to_numeric(frame[analyte], errors="coerce")
+        for analyte in y_analytes
+    }
+    pair_masks = {
+        analyte: (
+            x_numeric.notna()
+            & y_values.notna()
+            & np.isfinite(x_numeric)
+            & np.isfinite(y_values)
+        )
+        for analyte, y_values in y_numeric.items()
+    }
+    x_used = pd.Series(False, index=frame.index)
+    for pair_mask in pair_masks.values():
+        x_used |= pair_mask
     x_limits = clean_linear_limits(
-        frame[x_analyte], margin_fraction=margin_fraction
+        x_numeric[x_used], margin_fraction=margin_fraction
     )
     rows = math.ceil(len(y_analytes) / columns)
     figure, axes = plt.subplots(
@@ -220,29 +246,23 @@ def build_harker_figure(
 
     for index, analyte in enumerate(y_analytes):
         ax = axes.flat[index]
-        valid_pair_count = int(
-            (
-                pd.to_numeric(frame[x_analyte], errors="coerce").notna()
-                & pd.to_numeric(frame[analyte], errors="coerce").notna()
-            ).sum()
-        )
+        pair_mask = pair_masks[analyte]
+        valid_pair_count = int(pair_mask.sum())
         if valid_pair_count < 2:
             raise PlottingError(
                 f"{x_analyte}–{analyte} 只有 {valid_pair_count} 个完整数据点；"
                 "至少需要 2 个。"
             )
         y_limits = clean_linear_limits(
-            frame[analyte], margin_fraction=margin_fraction
+            y_numeric[analyte][pair_mask],
+            margin_fraction=margin_fraction,
         )
         missing_pairs[analyte] = int(len(frame) - valid_pair_count)
 
         if group_column is None:
-            x_values = pd.to_numeric(frame[x_analyte], errors="coerce")
-            y_values = pd.to_numeric(frame[analyte], errors="coerce")
-            finite = x_values.notna() & y_values.notna()
             ax.scatter(
-                x_values[finite],
-                y_values[finite],
+                x_numeric[pair_mask],
+                y_numeric[analyte][pair_mask],
                 s=22,
                 c="#3569A8",
                 marker="o",
@@ -262,7 +282,12 @@ def build_harker_figure(
                 y_values = pd.to_numeric(
                     subset[analyte], errors="coerce"
                 )
-                finite = x_values.notna() & y_values.notna()
+                finite = (
+                    x_values.notna()
+                    & y_values.notna()
+                    & np.isfinite(x_values)
+                    & np.isfinite(y_values)
+                )
                 style = styles[group]
                 ax.scatter(
                     x_values[finite],
@@ -435,6 +460,7 @@ def plot_harker_path(
     axes_frame: str = "full",
     margin_fraction: float = 0.06,
     overwrite: bool = False,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
     """Validate input and export a Harker figure bundle."""
     figure = None
@@ -546,6 +572,7 @@ def plot_harker_path(
             resolved_columns,
             axes_frame,
             margin_fraction,
+            style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
         save_figure_bundle(figure, figure_paths, dpi)
@@ -641,6 +668,7 @@ def plot_harker_path(
                 "height_mm": resolved_height,
                 "png_dpi": dpi,
                 "tiff_dpi": dpi,
+                "style_preset": style_preset,
             },
             "plot": plot_info,
             "outputs": [

@@ -2,7 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本为 [v0.3.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.3.0)，包含球粒陨石标准化 REE 配分图、微量元素蛛网图、Harker 变化图，以及带适用性保护的火山岩 TAS 分类图。
+当前公开正式版本为 [v0.3.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.3.0)。本分支正在审核 v0.4.0 开发候选版：它不增加新图解，而是为已有的 REE、蛛网图、Harker 和 TAS 增加统一配方、运行前计划、隐私报告和多任务原子输出。
 
 ## 当前可以做什么
 
@@ -16,13 +16,17 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 以 SiO2 或用户指定变量为横轴，一次生成一幅或多幅 Harker 变化图；
 - 使用 SiO2 与 Na2O + K2O 绘制火山岩 TAS 图，并输出逐样品分类与边界复核状态；
 - 生成投稿尺寸的 REE、蛛网图、Harker 或 TAS 图件，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
-- 同步输出实际绘图数据 CSV 和机器可读的 JSON 运行报告；
-- 可选择完整四边框，以及经过碰撞检查的图内图例；
+- 用一个 YAML 配方明确记录数据文件、列映射、单位、科学参数和人工确认项；
+- 在出图前生成不含源数据值的计划，数据或参考文件变化后旧计划自动失效；
+- 用一个配方从同一数据表运行一个或多个图件任务，所有任务成功后才提交完整输出；
+- 输出机器可读的 JSON 报告和中文 QA 摘要；
+- 可在 `local-reproducible` 模式保留实际绘图数据 CSV，或在 `shareable` 模式省略该敏感文件；
+- 统一工作流默认使用完整四边框，并自动安排图例以尽量避免遮挡数据或超出图幅；
 - 全程在本地处理数据，绘图脚本不请求网络服务。
 
 ## 安装到 Codex
 
-公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.3.0：
+公开仓库的默认分支 `main` 当前包含经过审核和自动测试的正式 v0.3.0：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -36,9 +40,15 @@ https://github.com/gronbow/GeoSkills
 
 如果设置了 `CODEX_HOME`，则复制到 `%CODEX_HOME%\skills\geoskills`。复制完成后，重新开启一个 Codex 任务即可使用。
 
-## Windows 快速开始
+### 普通用户：直接在 Codex 中使用
 
-需要 Python 3.11 或 3.12。先运行 `python --version` 确认版本，然后在 PowerShell 中进入项目目录并安装依赖：
+如果只想用自己的数据出图，不需要手动输入后文的开发命令。重新开启一个 Codex 任务，上传或指定本地数据文件，然后说明希望使用 GeoSkills 绘制哪类图。GeoSkills 会先检查本地环境和数据，再起草配方与计划供你审核；它不会替你把尚未核对的科学确认项设为 `true`。
+
+如果环境检查提示缺少依赖，可以让 Codex 解释缺少什么，并在你同意后完成本地安装。
+
+## 开发者：Windows 本地命令测试
+
+以下命令用于开发、审核或手动复现工作流，均应在完整的 GeoSkills 仓库根目录运行。需要 Python 3.11 或 3.12。先运行 `python --version` 确认版本，然后在 PowerShell 中创建独立环境并安装依赖：
 
 ```powershell
 python -m venv .venv
@@ -46,6 +56,52 @@ python -m venv .venv
 ```
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
+
+## v0.4 统一工作流
+
+可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
+
+```text
+数据 + 配方 → plan（只检查，不出图）→ 人工审核 → run（一次性生成完整结果）
+```
+
+若要用命令行复现流程，先检查环境：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py self-check
+```
+
+仓库提供三个可以直接配合合成数据运行的示例配方：
+
+| 配方 | 任务 |
+|---|---|
+| `geoskills_ree_workflow.yaml` | REE 配分图 |
+| `geoskills_spider_workflow.yaml` | 微量元素蛛网图 |
+| `geoskills_major_workflow.yaml` | 同时生成 Harker 和 TAS |
+
+例如，先为主量元素双任务配方生成计划：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py plan skills\geoskills\examples\geoskills_major_workflow.yaml --output outputs\major-plan.json
+```
+
+此命令不会生成图件。终端只显示状态、计划编号、计划文件名和问题摘要；完整的任务、列映射、单位、参考文件、图件尺寸和输出模式保存在 `outputs\major-plan.json`。请让 Codex 打开并概括该文件，或用文本编辑器查看。状态为 `ready` 且内容经人工核对后，再运行：
+
+```powershell
+.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py run skills\geoskills\examples\geoskills_major_workflow.yaml --plan outputs\major-plan.json
+```
+
+`--plan outputs\major-plan.json` 只指定计划文件的位置。图件位置由配方中的 `output.directory` 决定，并相对于配方文件所在目录解析。因此，本示例的图件位于 `skills\geoskills\examples\generated\geoskills-major-workflow\`，而不在 `outputs\`。
+
+如果 `run` 返回 `review`，图件已经生成，但存在边界样品等必须人工复核的科学状态。`blocked` 或 `needs_confirmation` 则表示安全检查尚未通过，不会提交新的最终图件。
+
+默认 `shareable` 模式不保留逐样品绘图数据 CSV，便于分享图件与报告；需要完全本地复现时，可在配方中改为 `local-reproducible`。该模式会保留敏感 CSV，不应直接上传公开仓库。将 `plotted_data_export_reviewed` 设为 `true`，只表示已经核对这种导出后果，不表示允许把数据上传到模型或第三方服务。
+
+示例配方中的确认项只适用于仓库内已审核的合成数据。把配方复制给自己的数据后，应先把确认项改为 `false`，实际核对完成后再逐项确认。
+
+配方字段、四类任务示例、返回状态和常见错误见 [v0.4 配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
+
+## v0.3 单脚本兼容命令
 
 先检查示例数据：
 
@@ -122,6 +178,8 @@ GeoSkills/
 │       ├── examples/
 │       ├── references/
 │       └── scripts/
+│           ├── geoskills.py
+│           └── geoskills_core/
 └── tests/
 ```
 
@@ -133,13 +191,17 @@ GeoSkills/
 - 原始地幔表保留文献 Table 1 的 Cs、Pb 数值，并明确提示原文脚注中的 modified 版本；程序不会静默混用。
 - Harker 图只展示变量间的协变关系；默认不添加拟合线，也不从相关性单独推断岩浆过程。
 - TAS 边界使用带文献与版本信息的本地资产。恰好位于边界上的样品标为 `review_required`，不会静默选择一侧。
-- TAS 仅用于明确确认的火山岩；`as-reported` 结果标为初步分类，不能替代无水归一化后的专业判断。
+- TAS 仅用于明确确认的火山岩；`as-reported` 结果标为初步分类，不能替代无水归一化后的专业判断，并且必须由用户明确设置 `provisional_classification_accepted: true`。
 - 图形可以展示富集程度、斜率和平行性，但不能单独证明岩浆源区、部分熔融、分离结晶或构造环境。
+- 统一计划和可分享报告默认不含绝对路径、样品编号或源数据值。
+- 配方、数据、工具版本或内置参考文件发生变化时，必须重新生成计划。
+- 多任务结果以完整目录为单位提交；中途失败不会留下半套新输出，也不会破坏原有完整目录。
+- 覆盖运行只替换带有效 GeoSkills 运行报告的旧结果目录；普通同名文件夹会被保护。
 - `local_data/` 和 `outputs/` 已排除在 Git 之外；不要提交私人或未发表数据。
 
 ## 当前状态
 
-GeoSkills v0.3.0 是当前正式版本。它整合了 v0.1.0 的 REE 工作流、经过审核的微量元素蛛网图，以及新增的 Harker 和火山岩 TAS 工作流。完整版本通过了 69 项自动测试、已发表数据的 Harker 验证、合成火山岩 TAS 验证、导出审计、人工图面复核，以及 Ubuntu/Windows 上 Python 3.11/3.12 的 GitHub Actions 检查。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.3.0 仍是当前公开正式版本。v0.4.0 开发候选版已在本地完成统一入口、严格配方、固定图解注册表、计划指纹、隐私报告和多任务原子输出，并已通过 196 项自动测试、合成数据回归和已发表数据回归。该候选版尚未上传 GitHub，需经用户最终审核批准。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

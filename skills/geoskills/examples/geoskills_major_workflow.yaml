@@ -1,0 +1,78 @@
+# 本示例中的 true 只适用于同目录的合成数据。
+# 替换为自己的数据后，请先将所有 confirmations 改为 false，
+# 完成人工核对后再逐项设为 true；这不表示允许上传数据。
+schema_version: geoskills.recipe/v1
+
+input:
+  file: synthetic_major_element_data.csv
+  sheet: null
+  layout: row-per-sample
+
+columns:
+  sample_id: Sample
+  group: Group
+  mapping:
+    SiO2: SiO2_wt%
+    TiO2: TiO2_wt%
+    Al2O3: Al2O3_wt%
+    Fe2O3T: Fe2O3T_wt%
+    MnO: MnO_wt%
+    MgO: MgO_wt%
+    CaO: CaO_wt%
+    Na2O: Na2O_wt%
+    K2O: K2O_wt%
+    P2O5: P2O5_wt%
+    Rb: Rb_ppm
+    Sr: Sr_ppm
+    Zr: Zr_ppm
+  units:
+    major_oxides: wt%
+    trace_elements: ppm
+
+output:
+  directory: generated/geoskills-major-workflow
+  report_profile: shareable
+
+presets:
+  journal-main:
+    extends: publication-double-column
+    style:
+      width_mm: 183
+      height_mm: 120
+      dpi: 600
+
+confirmations:
+  input_structure_reviewed: true
+  column_mapping_reviewed: true
+  units_reviewed: true
+  plotted_data_export_reviewed: true
+
+tasks:
+  - id: harker-main
+    diagram: harker
+    stem: figure-harker
+    preset: journal-main
+    parameters:
+      x: SiO2
+      y:
+        - TiO2
+        - Al2O3
+        - Fe2O3T
+        - MgO
+        - CaO
+        - Na2O
+        - K2O
+        - P2O5
+      groups: all
+    confirmations: {}
+
+  - id: tas-main
+    diagram: tas
+    stem: figure-tas
+    preset: journal-main
+    parameters:
+      composition_basis: anhydrous-normalized
+      groups: all
+    confirmations:
+      volcanic_samples: true
+      composition_basis_reviewed: true

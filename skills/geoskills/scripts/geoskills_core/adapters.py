@@ -1,0 +1,666 @@
+"""Thin, fixed adapters between v0.4 recipes and the reviewed v0.3 plotters."""
+
+from __future__ import annotations
+
+import shutil
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Mapping
+
+import numpy as np
+import pandas as pd
+
+from .analytes import (
+    DEFAULT_ANALYTE_REGISTRY,
+    infer_unit,
+    match_analyte,
+    normalize_unit,
+)
+from .errors import GeoSkillsError
+from .io import adapt_transposed_table, read_table, validate_input_file
+from .validation import ColumnMapping, validate_column_mappings
+
+
+class AdapterError(GeoSkillsError):
+    """A recipe cannot be translated safely to a reviewed plotter."""
+
+    default_code = "E400"
+
+
+@dataclass(frozen=True)
+class PreparedInput:
+    """One temporary canonical table and its share-safe provenance."""
+
+    path: Path
+    source: dict[str, Any]
+    sample_column: str
+    group_column: str | None
+    mappings: tuple[ColumnMapping, ...]
+
+
+def _unit_for(
+    canonical: str,
+    source_spec: object,
+    units: Mapping[str, object],
+) -> str:
+    if isinstance(source_spec, Mapping) and source_spec.get("unit") is not None:
+        return normalize_unit(source_spec["unit"])
+    if canonical in units:
+        return normalize_unit(units[canonical])
+    definition = DEFAULT_ANALYTE_REGISTRY.get(canonical)
+    if definition is None:
+        return "unknown"
+    family_key = (
+        "major_oxides"
+        if definition.kind == "major_oxide"
+        else "trace_elements"
+    )
+    return normalize_unit(units.get(family_key, "unknown"))
+
+
+def _source_column(source_spec: object) -> str:
+    if isinstance(source_spec, Mapping):
+        value = source_spec.get("source")
+    else:
+        value = source_spec
+    if value is None or not str(value).strip():
+        raise AdapterError(
+            "列映射必须提供非空原始列名。",
+            code="E401",
+        )
+    return str(value)
+
+
+def prepare_mapped_input(
+    recipe: Mapping[str, Any],
+    *,
+    recipe_path: Path,
+    work_dir: Path,
+) -> PreparedInput:
+    """Create a temporary canonical CSV without changing the user's source."""
+
+    recipe_directory = recipe_path.resolve().parent
+    input_value = str(recipe["input"]["file"])
+    input_path = (recipe_directory / input_value).resolve()
+    try:
+        input_path.relative_to(recipe_directory)
+    except ValueError as exc:
+        raise AdapterError(
+            "输入文件必须位于配方目录或其子目录中。",
+            code="E402",
+        ) from exc
+
+    layout = recipe["input"].get("layout", "auto")
+    transposer = None if layout == "row-per-sample" else adapt_transposed_table
+    validated_input = validate_input_file(input_path)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = work_dir / f"source_snapshot{validated_input.suffix.lower()}"
+    shutil.copyfile(validated_input, snapshot_path)
+    frame, source = read_table(
+        snapshot_path,
+        recipe["input"].get("sheet"),
+        transposer=transposer,
+    )
+    source["filename"] = validated_input.name
+    if frame is None:
+        raise AdapterError(
+            "Excel 文件包含多个工作表；必须在配方中明确 input.sheet。",
+            code="E403",
+            details={"sheet_names": source.get("sheet_names", [])},
+        )
+    if (
+        layout == "analyte-per-row"
+        and source.get("layout") != "column_per_sample_transposed"
+    ):
+        raise AdapterError(
+            "配方声明 analyte-per-row，但未识别出唯一可转置结构。",
+            code="E404",
+        )
+
+    columns = recipe["columns"]
+    sample_source = str(columns["sample_id"])
+    group_value = columns.get("group")
+    group_source = None if group_value is None else str(group_value)
+    available = {str(column) for column in frame.columns}
+    if sample_source not in available:
+        raise AdapterError(
+            "配方指定的样品编号列不存在。",
+            code="E405",
+            details={"column": sample_source},
+        )
+    if group_source is not None and group_source not in available:
+        raise AdapterError(
+            "配方指定的分组列不存在。",
+            code="E406",
+            details={"column": group_source},
+        )
+    if group_source == sample_source:
+        raise AdapterError(
+            "样品编号列和分组列不能是同一列。",
+            code="E407",
+        )
+
+    mapping_config = columns.get("mapping", {})
+    units = columns.get("units", {})
+    mappings = tuple(
+        ColumnMapping(
+            source_column=_source_column(source_spec),
+            canonical_analyte=str(canonical),
+            unit=_unit_for(str(canonical), source_spec, units),
+            origin="recipe",
+        )
+        for canonical, source_spec in mapping_config.items()
+    )
+    mapping_issues = validate_column_mappings(
+        mappings,
+        available_columns=frame.columns,
+    )
+    if mapping_issues:
+        raise AdapterError(
+            "列映射未通过安全检查。",
+            code="E408",
+            details={"issues": [item.to_dict() for item in mapping_issues]},
+        )
+    header_conflicts: list[dict[str, str]] = []
+    for mapping in mappings:
+        header_unit = infer_unit(mapping.source_column)
+        declared_unit = normalize_unit(mapping.unit)
+        matched = match_analyte(mapping.source_column)
+        if header_unit != "unknown" and header_unit != declared_unit:
+            header_conflicts.append(
+                {
+                    "source_column": mapping.source_column,
+                    "canonical_analyte": mapping.canonical_analyte,
+                    "header_unit": header_unit,
+                    "declared_unit": declared_unit,
+                    "conflict": "unit",
+                }
+            )
+        if (
+            matched is not None
+            and matched.canonical != mapping.canonical_analyte
+        ):
+            header_conflicts.append(
+                {
+                    "source_column": mapping.source_column,
+                    "canonical_analyte": mapping.canonical_analyte,
+                    "header_analyte": matched.canonical,
+                    "conflict": "analyte",
+                }
+            )
+    if header_conflicts:
+        raise AdapterError(
+            "原始列名中的明确分析物或单位与配方声明不一致；GeoSkills 不会猜测、交换或自动换算。",
+            code="E415",
+            details={"conflicts": header_conflicts},
+        )
+
+    used_sources = [sample_source]
+    if group_source is not None:
+        used_sources.append(group_source)
+    used_sources.extend(item.source_column for item in mappings)
+    duplicates = sorted(
+        {
+            value
+            for value in used_sources
+            if used_sources.count(value) > 1
+        }
+    )
+    if duplicates:
+        raise AdapterError(
+            "同一原始列不能同时承担多个角色。",
+            code="E409",
+            details={"columns": duplicates},
+        )
+
+    canonical = pd.DataFrame({"Sample": frame[sample_source]})
+    if group_source is not None:
+        canonical["Group"] = frame[group_source]
+    for mapping in mappings:
+        canonical[f"{mapping.canonical_analyte}_{mapping.unit}"] = frame[
+            mapping.source_column
+        ]
+
+    mapped_path = work_dir / "mapped_input.csv"
+    canonical.to_csv(mapped_path, index=False)
+    safe_source = {
+        key: value
+        for key, value in source.items()
+        if key
+        in {
+            "filename",
+            "file_sha256",
+            "size_bytes",
+            "format",
+            "sheet",
+            "layout",
+        }
+    }
+    safe_source["row_count"] = int(canonical.shape[0])
+    safe_source["column_count"] = int(canonical.shape[1])
+    return PreparedInput(
+        path=mapped_path,
+        source=safe_source,
+        sample_column="Sample",
+        group_column="Group" if group_source is not None else None,
+        mappings=mappings,
+    )
+
+
+def _safe_issues(report: Mapping[str, Any]) -> list[dict[str, str]]:
+    results: list[dict[str, str]] = []
+    for item in report.get("issues", []):
+        severity = str(item.get("severity", "review"))
+        if severity not in {"info", "warning", "review", "error"}:
+            severity = "review"
+        results.append(
+            {
+                "code": str(item.get("code", "E499")),
+                "severity": severity,
+                "message": str(item.get("message", "需要人工复核。")),
+            }
+        )
+    return results
+
+
+def inspect_task(
+    task: Mapping[str, Any],
+    prepared: PreparedInput,
+) -> dict[str, Any]:
+    """Run the appropriate reviewed inspector without importing plotters."""
+
+    diagram = str(task["diagram"])
+    parameters = task.get("parameters", {})
+    selected_groups = parameters.get("groups", "all")
+    missing_groups: list[str] = []
+    selected_frame: pd.DataFrame | None = None
+    inspection_path = prepared.path
+    if selected_groups != "all":
+        if prepared.group_column is None:
+            missing_groups = [str(item) for item in selected_groups]
+        else:
+            canonical_frame = pd.read_csv(prepared.path)
+            group_text = (
+                canonical_frame[prepared.group_column]
+                .astype("string")
+                .str.strip()
+            )
+            available_groups = {
+                str(value)
+                for value in group_text.dropna()
+                if str(value).strip()
+            }
+            missing_groups = sorted(
+                str(item)
+                for item in selected_groups
+                if str(item) not in available_groups
+            )
+            if not missing_groups:
+                requested_groups = {str(item) for item in selected_groups}
+                selected_frame = canonical_frame.loc[
+                    group_text.isin(requested_groups)
+                ].copy()
+                if diagram in {"ree", "spider"}:
+                    inspection_path = _task_input_path(task, prepared)
+    elif diagram in {"ree", "spider", "harker", "tas"}:
+        selected_frame = pd.read_csv(prepared.path)
+
+    if diagram == "ree":
+        from inspect_data import inspect_path
+
+        report = inspect_path(
+            inspection_path,
+            requested_sample_column=prepared.sample_column,
+            requested_group_column=prepared.group_column,
+        )
+        recognized = [
+            item["element"]
+            for item in report.get("ree", {}).get("recognized", [])
+        ]
+    elif diagram == "spider":
+        from inspect_spider_data import inspect_spider_path
+
+        report = inspect_spider_path(
+            inspection_path,
+            requested_sample_column=prepared.sample_column,
+            requested_group_column=prepared.group_column,
+        )
+        recognized = [
+            item["element"]
+            for item in report.get("trace_elements", {}).get("recognized", [])
+        ]
+    elif diagram in {"harker", "tas"}:
+        from inspect_major_data import inspect_major_path
+
+        report = inspect_major_path(
+            prepared.path,
+            requested_sample_column=prepared.sample_column,
+            requested_group_column=prepared.group_column,
+        )
+        recognized = [
+            item["analyte"]
+            for item in report.get("analytes", {}).get("recognized", [])
+        ]
+    else:
+        raise AdapterError(
+            "图件类型不在固定注册表中。",
+            code="E410",
+            details={"diagram": diagram},
+        )
+
+    issues = _safe_issues(report)
+    requested: list[str] = []
+    if diagram in {"ree", "spider"}:
+        requested = [str(value) for value in parameters.get("elements", [])]
+    elif diagram == "harker":
+        requested = [
+            str(parameters.get("x", "")),
+            *[str(value) for value in parameters.get("y", [])],
+        ]
+    elif diagram == "tas":
+        requested = ["SiO2", "Na2O", "K2O"]
+    missing = sorted(
+        {value for value in requested if value and value not in set(recognized)}
+    )
+    if missing:
+        issues.append(
+            {
+                "code": "E411",
+                "severity": "review",
+                "message": "任务所需分析项目未全部映射到输入表。",
+                "field": "columns.mapping",
+                "suggested_action": "补充列映射并重新生成计划。",
+            }
+        )
+    if missing_groups:
+        issues.append(
+            {
+                "code": "E412",
+                "severity": "review",
+                "message": "任务选择的分组未在输入表中找到。",
+                "field": "tasks.parameters.groups",
+                "suggested_action": "核对分组名称和 columns.group 后重新生成计划。",
+            }
+        )
+    pattern_blocked = False
+    if diagram in {"ree", "spider"} and not missing and not missing_groups:
+        inspection_frame = pd.read_csv(inspection_path)
+        canonical_columns = {
+            mapping.canonical_analyte: (
+                f"{mapping.canonical_analyte}_{mapping.unit}"
+            )
+            for mapping in prepared.mappings
+        }
+        spider_sources = {"K": "K2O", "P": "P2O5", "Ti": "TiO2"}
+        positive_found = False
+        for analyte in (str(value) for value in parameters.get("elements", [])):
+            source_analyte = analyte
+            if (
+                diagram == "spider"
+                and source_analyte not in canonical_columns
+            ):
+                source_analyte = spider_sources.get(analyte, analyte)
+            column = canonical_columns.get(source_analyte)
+            if column is None:
+                continue
+            values = pd.to_numeric(inspection_frame[column], errors="coerce")
+            if bool((values.notna() & np.isfinite(values) & (values > 0)).any()):
+                positive_found = True
+                break
+        if not positive_found:
+            pattern_blocked = True
+            issues.append(
+                {
+                    "code": "E419",
+                    "severity": "review",
+                    "message": "所选样品和元素没有任何可绘制的正有限值。",
+                    "field": "tasks.parameters.groups",
+                    "suggested_action": "检查分组、所选元素、缺失值和非正值。",
+                }
+            )
+    harker_blocked = False
+    if diagram == "harker":
+        requested_y = [str(value) for value in parameters.get("y", [])]
+        if len(requested_y) > 9:
+            harker_blocked = True
+            issues.append(
+                {
+                    "code": "E416",
+                    "severity": "review",
+                    "message": "Harker 图一次最多绘制 9 个 Y 变量。",
+                    "field": "tasks.parameters.y",
+                    "suggested_action": "拆分为多个 Harker 任务后重新生成计划。",
+                }
+            )
+        if not missing and not missing_groups and selected_frame is not None:
+            canonical_columns = {
+                mapping.canonical_analyte: (
+                    f"{mapping.canonical_analyte}_{mapping.unit}"
+                )
+                for mapping in prepared.mappings
+            }
+            x_name = str(parameters.get("x", ""))
+            x_column = canonical_columns.get(x_name)
+            insufficient: list[str] = []
+            if x_column is not None:
+                x_values = pd.to_numeric(
+                    selected_frame[x_column], errors="coerce"
+                )
+                for y_name in requested_y:
+                    y_column = canonical_columns.get(y_name)
+                    if y_column is None:
+                        continue
+                    y_values = pd.to_numeric(
+                        selected_frame[y_column], errors="coerce"
+                    )
+                    paired = (
+                        x_values.notna()
+                        & y_values.notna()
+                        & np.isfinite(x_values)
+                        & np.isfinite(y_values)
+                    )
+                    if int(paired.sum()) < 2:
+                        insufficient.append(y_name)
+            if insufficient:
+                harker_blocked = True
+                issues.append(
+                    {
+                        "code": "E417",
+                        "severity": "review",
+                        "message": "Harker 图的部分 X–Y 组合少于 2 对完整有限值。",
+                        "field": "tasks.parameters.y",
+                        "suggested_action": "检查缺失值、分组筛选或拆分任务后重新生成计划。",
+                    }
+                )
+    tas_blocked = False
+    if (
+        diagram == "tas"
+        and not missing
+        and not missing_groups
+        and selected_frame is not None
+    ):
+        canonical_columns = {
+            mapping.canonical_analyte: (
+                f"{mapping.canonical_analyte}_{mapping.unit}"
+            )
+            for mapping in prepared.mappings
+        }
+        silica = pd.to_numeric(
+            selected_frame[canonical_columns["SiO2"]], errors="coerce"
+        )
+        sodium = pd.to_numeric(
+            selected_frame[canonical_columns["Na2O"]], errors="coerce"
+        )
+        potassium = pd.to_numeric(
+            selected_frame[canonical_columns["K2O"]], errors="coerce"
+        )
+        finite = (
+            silica.notna()
+            & sodium.notna()
+            & potassium.notna()
+            & np.isfinite(silica)
+            & np.isfinite(sodium)
+            & np.isfinite(potassium)
+        )
+        if int(finite.sum()) == 0:
+            tas_blocked = True
+            issues.append(
+                {
+                    "code": "E418",
+                    "severity": "review",
+                    "message": "所选样品没有可用于 TAS 分类的完整有限坐标。",
+                    "field": "tasks.parameters.groups",
+                    "suggested_action": "检查分组筛选以及 SiO2、Na2O、K2O 数据。",
+                }
+            )
+    status = str(report.get("status", "blocked"))
+    if (
+        missing
+        or missing_groups
+        or pattern_blocked
+        or harker_blocked
+        or tas_blocked
+        or status != "ready"
+    ):
+        status = "blocked"
+    return {
+        "task_id": str(task["id"]),
+        "diagram": diagram,
+        "status": status,
+        "recognized_analytes": recognized,
+        "issues": issues,
+    }
+
+
+def _comma_list(value: object) -> str | None:
+    if value is None or value == "all":
+        return None
+    if isinstance(value, str):
+        return value
+    return ",".join(str(item) for item in value)
+
+
+def _task_input_path(
+    task: Mapping[str, Any],
+    prepared: PreparedInput,
+) -> Path:
+    """Create a private per-task subset for REE/spider group selection."""
+
+    if str(task["diagram"]) not in {"ree", "spider"}:
+        return prepared.path
+    selected = task.get("parameters", {}).get("groups", "all")
+    if selected == "all":
+        return prepared.path
+    if prepared.group_column is None:
+        raise AdapterError(
+            "按组筛选前必须明确分组列。",
+            code="E413",
+        )
+    frame = pd.read_csv(prepared.path)
+    group_text = frame[prepared.group_column].astype("string").str.strip()
+    requested = {str(item) for item in selected}
+    subset = frame.loc[group_text.isin(requested)].copy()
+    if subset.empty:
+        raise AdapterError(
+            "所选分组没有可绘制样品。",
+            code="E414",
+        )
+    task_id = str(task["id"])
+    subset_path = prepared.path.parent / f"mapped_input.{task_id}.csv"
+    subset.to_csv(subset_path, index=False)
+    return subset_path
+
+
+def run_task(
+    task: Mapping[str, Any],
+    prepared: PreparedInput,
+    *,
+    output_dir: Path,
+) -> dict[str, Any]:
+    """Call one fixed v0.3 plotter with fully expanded recipe parameters."""
+
+    diagram = str(task["diagram"])
+    parameters = dict(task.get("parameters", {}))
+    style = dict(task.get("style", {}))
+    task_input_path = _task_input_path(task, prepared)
+    output_dir.mkdir(parents=True, exist_ok=False)
+    common = {
+        "input_path": task_input_path,
+        "output_dir": output_dir,
+        "stem": str(task["stem"]),
+        "requested_sheet": None,
+        "requested_sample_column": prepared.sample_column,
+        "requested_group_column": prepared.group_column,
+        "title": parameters.get("title"),
+        "dpi": int(style["dpi"]),
+        "overwrite": False,
+        "style_preset": str(style["base_preset"]),
+    }
+
+    if diagram == "ree":
+        from plot_ree import plot_path
+
+        return plot_path(
+            **common,
+            requested_elements=_comma_list(parameters["elements"]),
+            width_mm=float(style["width_mm"]),
+            height_mm=float(style["height_mm"]),
+            y_margin=float(style.get("y_margin", 0.08)),
+            axes_frame=str(style.get("axes_frame", "full")),
+            legend_layout=str(style.get("legend_layout", "inside-auto")),
+            grid_style=str(style.get("grid_style", "none")),
+        )
+    if diagram == "spider":
+        from plot_spider import plot_spider_path
+
+        return plot_spider_path(
+            **common,
+            reference_key=str(parameters["reference"]),
+            requested_elements=_comma_list(parameters["elements"]),
+            width_mm=float(style["width_mm"]),
+            height_mm=float(style["height_mm"]),
+            y_margin=float(style.get("y_margin", 0.08)),
+            axes_frame=str(style.get("axes_frame", "full")),
+            legend_layout=str(style.get("legend_layout", "inside-auto")),
+            grid_style=str(style.get("grid_style", "none")),
+        )
+    if diagram == "harker":
+        from plot_harker import plot_harker_path
+
+        return plot_harker_path(
+            **common,
+            requested_x=str(parameters["x"]),
+            requested_y=_comma_list(parameters["y"]),
+            requested_groups=_comma_list(parameters.get("groups", "all")),
+            width_mm=float(style["width_mm"]),
+            height_mm=(
+                None
+                if style.get("height_mm") is None
+                else float(style["height_mm"])
+            ),
+            columns=(
+                None
+                if parameters.get("columns") is None
+                else int(parameters["columns"])
+            ),
+            axes_frame=str(style.get("axes_frame", "full")),
+            margin_fraction=float(style.get("margin_fraction", 0.06)),
+        )
+    if diagram == "tas":
+        from plot_tas import plot_tas_path
+
+        confirmations = task.get("confirmations", {})
+        return plot_tas_path(
+            **common,
+            requested_groups=_comma_list(parameters.get("groups", "all")),
+            confirm_volcanic=bool(confirmations.get("volcanic_samples")),
+            composition_basis=str(parameters["composition_basis"]),
+            width_mm=float(style["width_mm"]),
+            height_mm=float(style["height_mm"]),
+            legend_layout=str(style.get("legend_layout", "inside-auto")),
+        )
+    raise AdapterError(
+        "图件类型不在固定注册表中。",
+        code="E410",
+        details={"diagram": diagram},
+    )
