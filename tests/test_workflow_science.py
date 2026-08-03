@@ -1,0 +1,611 @@
+from __future__ import annotations
+
+import json
+import shutil
+import sys
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+import pytest
+import yaml
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS = ROOT / "skills" / "geoskills" / "scripts"
+EXAMPLES = ROOT / "skills" / "geoskills" / "examples"
+LOCAL_RECIPE = ROOT / "local_data" / "v04_published_regression.yaml"
+sys.path.insert(0, str(SCRIPTS))
+
+from geoskills_core.workflow import (  # noqa: E402
+    build_plan,
+    create_plan,
+    execute_plan,
+)
+
+
+TOP_CONFIRMATIONS = {
+    "input_structure_reviewed": True,
+    "column_mapping_reviewed": True,
+    "units_reviewed": True,
+    "plotted_data_export_reviewed": True,
+}
+REE_ELEMENTS = ["La", "Ce", "Pr"]
+SPIDER_ELEMENTS = ["Rb", "Ba", "Th", "U", "Nb"]
+
+
+def _task(
+    task_id: str,
+    diagram: str,
+    parameters: dict[str, Any],
+    *,
+    confirmations: dict[str, bool] | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": task_id,
+        "diagram": diagram,
+        "stem": f"figure-{task_id}",
+        "preset": "test-small",
+        "parameters": parameters,
+        "confirmations": confirmations or {},
+    }
+
+
+def _write_recipe(
+    directory: Path,
+    frame: pd.DataFrame,
+    *,
+    mapping: dict[str, str],
+    units: dict[str, str],
+    tasks: list[dict[str, Any]],
+    report_profile: str = "shareable",
+) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(directory / "input.csv", index=False)
+    recipe = {
+        "schema_version": "geoskills.recipe/v1",
+        "input": {
+            "file": "input.csv",
+            "sheet": None,
+            "layout": "row-per-sample",
+        },
+        "columns": {
+            "sample_id": "Sample",
+            "group": "Group" if "Group" in frame.columns else None,
+            "mapping": mapping,
+            "units": units,
+        },
+        "output": {
+            "directory": "bundle",
+            "report_profile": report_profile,
+        },
+        "presets": {
+            "test-small": {
+                "extends": "review-preview",
+                "style": {
+                    "width_mm": 100,
+                    "height_mm": 70,
+                    "dpi": 72,
+                },
+            }
+        },
+        "confirmations": TOP_CONFIRMATIONS,
+        "tasks": tasks,
+    }
+    path = directory / "recipe.yaml"
+    path.write_text(
+        yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _issue_codes(value: object) -> set[str]:
+    codes: set[str] = set()
+    if isinstance(value, dict):
+        code = value.get("code")
+        if isinstance(code, str):
+            codes.add(code)
+        for child in value.values():
+            codes.update(_issue_codes(child))
+    elif isinstance(value, list):
+        for child in value:
+            codes.update(_issue_codes(child))
+    return codes
+
+
+@pytest.mark.parametrize(
+    ("case_name", "frame", "mapping"),
+    [
+        (
+            "unit-conflict",
+            pd.DataFrame(
+                {
+                    "Sample": ["S1", "S2"],
+                    "Group": ["A", "A"],
+                    "La_ppb": [20.0, 22.0],
+                    "Ce_ppm": [40.0, 44.0],
+                    "Pr_ppm": [5.0, 5.5],
+                }
+            ),
+            {"La": "La_ppb", "Ce": "Ce_ppm", "Pr": "Pr_ppm"},
+        ),
+        (
+            "analyte-conflict",
+            pd.DataFrame(
+                {
+                    "Sample": ["S1", "S2"],
+                    "Group": ["A", "A"],
+                    "La_ppm": [20.0, 22.0],
+                    "Ce_ppm": [40.0, 44.0],
+                    "Pr_ppm": [5.0, 5.5],
+                }
+            ),
+            {"La": "Ce_ppm", "Ce": "La_ppm", "Pr": "Pr_ppm"},
+        ),
+    ],
+)
+def test_e415_rejects_explicit_header_conflicts(
+    tmp_path: Path,
+    case_name: str,
+    frame: pd.DataFrame,
+    mapping: dict[str, str],
+) -> None:
+    recipe_path = _write_recipe(
+        tmp_path / case_name,
+        frame,
+        mapping=mapping,
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "ree-main",
+                "ree",
+                {
+                    "reference": "chondrite-sm89",
+                    "elements": REE_ELEMENTS,
+                    "groups": "all",
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E415" in _issue_codes(result)
+
+
+def test_ree_and_spider_group_filters_reach_exported_source(
+    tmp_path: Path,
+) -> None:
+    elements = [*REE_ELEMENTS, *SPIDER_ELEMENTS]
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2", "S3"],
+            "Group": ["A", "A", "B"],
+            "La_ppm": [20.0, 22.0, 35.0],
+            "Ce_ppm": [40.0, 44.0, 70.0],
+            "Pr_ppm": [5.0, 5.5, 8.0],
+            "Rb_ppm": [30.0, 32.0, 60.0],
+            "Ba_ppm": [300.0, 320.0, 600.0],
+            "Th_ppm": [5.0, 5.5, 10.0],
+            "U_ppm": [1.2, 1.3, 2.5],
+            "Nb_ppm": [15.0, 16.0, 30.0],
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "filtered-patterns",
+        frame,
+        mapping={element: f"{element}_ppm" for element in elements},
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "ree-main",
+                "ree",
+                {
+                    "reference": "chondrite-sm89",
+                    "elements": REE_ELEMENTS,
+                    "groups": ["A"],
+                },
+            ),
+            _task(
+                "spider-main",
+                "spider",
+                {
+                    "reference": "pm-sm89",
+                    "elements": SPIDER_ELEMENTS,
+                    "groups": ["A"],
+                },
+            ),
+        ],
+        report_profile="local-reproducible",
+    )
+    plan_path = recipe_path.parent / "plan.json"
+
+    assert create_plan(recipe_path, plan_path)["status"] == "ready"
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert executed["status"] == "ready"
+    for task_id in ("ree-main", "spider-main"):
+        source = pd.read_csv(
+            recipe_path.parent
+            / "bundle"
+            / task_id
+            / f"figure-{task_id}.source_data.csv"
+        )
+        assert len(source) == 2
+        assert set(source["Group"].astype(str).str.strip()) == {"A"}
+
+
+def test_missing_group_blocks_with_e412(tmp_path: Path) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2"],
+            "Group": ["A", "B"],
+            "La_ppm": [20.0, 30.0],
+            "Ce_ppm": [40.0, 60.0],
+            "Pr_ppm": [5.0, 7.5],
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "missing-group",
+        frame,
+        mapping={element: f"{element}_ppm" for element in REE_ELEMENTS},
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "ree-main",
+                "ree",
+                {
+                    "reference": "chondrite-sm89",
+                    "elements": REE_ELEMENTS,
+                    "groups": ["not-present"],
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E412" in _issue_codes(result)
+
+
+def test_spider_zero_positive_selection_blocks_with_e419(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2", "S3", "S4"],
+            "Group": ["A", "A", "B", "B"],
+            **{
+                f"{element}_ppm": [10.0, 12.0, None, None]
+                for element in SPIDER_ELEMENTS
+            },
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "no-positive-spider-data",
+        frame,
+        mapping={
+            element: f"{element}_ppm" for element in SPIDER_ELEMENTS
+        },
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "spider-main",
+                "spider",
+                {
+                    "reference": "pm-sm89",
+                    "elements": SPIDER_ELEMENTS,
+                    "groups": ["B"],
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E419" in _issue_codes(result)
+
+
+def test_ree_zero_positive_selection_blocks_with_e419(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2", "S3", "S4"],
+            "Group": ["A", "A", "B", "B"],
+            **{
+                f"{element}_ppm": [10.0, 12.0, None, None]
+                for element in REE_ELEMENTS
+            },
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "no-positive-ree-data",
+        frame,
+        mapping={
+            element: f"{element}_ppm" for element in REE_ELEMENTS
+        },
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "ree-main",
+                "ree",
+                {
+                    "reference": "chondrite-sm89",
+                    "elements": REE_ELEMENTS,
+                    "groups": ["B"],
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E419" in _issue_codes(result)
+
+
+def test_spider_direct_k_is_preferred_before_oxide_fallback(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2"],
+            "Group": ["A", "A"],
+            "Rb_ppm": [None, None],
+            "Ba_ppm": [None, None],
+            "Th_ppm": [None, None],
+            "U_ppm": [None, None],
+            "K_ppm": [25000.0, 27000.0],
+        }
+    )
+    elements = ["Rb", "Ba", "Th", "U", "K"]
+    recipe_path = _write_recipe(
+        tmp_path / "direct-k",
+        frame,
+        mapping={element: f"{element}_ppm" for element in elements},
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "spider-main",
+                "spider",
+                {
+                    "reference": "pm-sm89",
+                    "elements": elements,
+                    "groups": "all",
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "ready"
+    assert "E419" not in _issue_codes(result)
+
+
+def test_harker_limits_panels_with_e416(tmp_path: Path) -> None:
+    frame = pd.read_csv(EXAMPLES / "synthetic_major_element_data.csv")
+    mapping = {
+        "SiO2": "SiO2_wt%",
+        "TiO2": "TiO2_wt%",
+        "Al2O3": "Al2O3_wt%",
+        "Fe2O3T": "Fe2O3T_wt%",
+        "MnO": "MnO_wt%",
+        "MgO": "MgO_wt%",
+        "CaO": "CaO_wt%",
+        "Na2O": "Na2O_wt%",
+        "K2O": "K2O_wt%",
+        "P2O5": "P2O5_wt%",
+        "Rb": "Rb_ppm",
+    }
+    recipe_path = _write_recipe(
+        tmp_path / "too-many-harker-panels",
+        frame,
+        mapping=mapping,
+        units={"major_oxides": "wt%", "trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "harker-main",
+                "harker",
+                {
+                    "x": "SiO2",
+                    "y": [
+                        "TiO2",
+                        "Al2O3",
+                        "Fe2O3T",
+                        "MnO",
+                        "MgO",
+                        "CaO",
+                        "Na2O",
+                        "K2O",
+                        "P2O5",
+                        "Rb",
+                    ],
+                    "groups": "all",
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E416" in _issue_codes(result)
+
+
+def test_harker_selected_subset_needs_two_complete_pairs(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2"],
+            "Group": ["A", "B"],
+            "SiO2_wt%": [50.0, 55.0],
+            "MgO_wt%": [7.0, 4.0],
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "short-harker-subset",
+        frame,
+        mapping={"SiO2": "SiO2_wt%", "MgO": "MgO_wt%"},
+        units={"major_oxides": "wt%"},
+        tasks=[
+            _task(
+                "harker-main",
+                "harker",
+                {
+                    "x": "SiO2",
+                    "y": ["MgO"],
+                    "groups": ["B"],
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E417" in _issue_codes(result)
+
+
+def test_tas_selected_subset_needs_a_complete_coordinate(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["S1", "S2", "S3"],
+            "Group": ["A", "B", "B"],
+            "SiO2_wt%": [50.0, None, None],
+            "Na2O_wt%": [3.0, None, None],
+            "K2O_wt%": [1.0, None, None],
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "empty-tas-subset",
+        frame,
+        mapping={
+            "SiO2": "SiO2_wt%",
+            "Na2O": "Na2O_wt%",
+            "K2O": "K2O_wt%",
+        },
+        units={"major_oxides": "wt%"},
+        tasks=[
+            _task(
+                "tas-main",
+                "tas",
+                {
+                    "composition_basis": "anhydrous-normalized",
+                    "groups": ["B"],
+                },
+                confirmations={
+                    "volcanic_samples": True,
+                    "composition_basis_reviewed": True,
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert "E418" in _issue_codes(result)
+
+
+def test_major_example_basis_and_scientific_audit_reports(
+    tmp_path: Path,
+) -> None:
+    source_data = EXAMPLES / "synthetic_major_element_data.csv"
+    frame = pd.read_csv(source_data)
+    major_columns = [
+        "SiO2_wt%",
+        "TiO2_wt%",
+        "Al2O3_wt%",
+        "Fe2O3T_wt%",
+        "MnO_wt%",
+        "MgO_wt%",
+        "CaO_wt%",
+        "Na2O_wt%",
+        "K2O_wt%",
+        "P2O5_wt%",
+    ]
+    totals = frame[major_columns].sum(axis=1)
+    assert ((totals - 100.0).abs() <= 0.001).all()
+
+    case = tmp_path / "major-example"
+    case.mkdir()
+    shutil.copyfile(
+        source_data,
+        case / "synthetic_major_element_data.csv",
+    )
+    recipe = yaml.safe_load(
+        (EXAMPLES / "geoskills_major_workflow.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    recipe["output"]["directory"] = "bundle"
+    recipe["presets"]["journal-main"]["style"]["dpi"] = 300
+    recipe_path = case / "recipe.yaml"
+    recipe_path.write_text(
+        yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    plan_path = case / "plan.json"
+
+    planned = create_plan(recipe_path, plan_path)
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert planned["status"] == "ready"
+    assert executed["status"] == "ready"
+    harker_report = json.loads(
+        (
+            case
+            / "bundle"
+            / "harker-main"
+            / "figure-harker.report.json"
+        ).read_text(encoding="utf-8")
+    )
+    tas_report = json.loads(
+        (
+            case
+            / "bundle"
+            / "tas-main"
+            / "figure-tas.report.json"
+        ).read_text(encoding="utf-8")
+    )
+    run_report = json.loads(
+        (case / "bundle" / "run.report.json").read_text(encoding="utf-8")
+    )
+    analyte_units = harker_report["details"]["analyte_units"]
+    assert analyte_units["SiO2"] == "wt%"
+    assert analyte_units["Rb"] == "ppm"
+    assert tas_report["details"]["scientific_confirmations"] == {
+        "volcanic_samples": True,
+        "composition_basis_reviewed": True,
+    }
+    assert run_report["details"]["data_confirmations"] == TOP_CONFIRMATIONS
+
+
+def test_local_published_recipe_build_plan_is_ready() -> None:
+    if not LOCAL_RECIPE.is_file():
+        pytest.skip("local published regression recipe is not available")
+    recipe = yaml.safe_load(LOCAL_RECIPE.read_text(encoding="utf-8"))
+    input_path = LOCAL_RECIPE.parent / str(recipe["input"]["file"])
+    if not input_path.is_file():
+        pytest.skip("local published regression input is not available")
+
+    result = build_plan(LOCAL_RECIPE)
+
+    assert result["status"] == "ready"
+    assert result["plan"] is not None
+    tasks = result["plan"]["tasks"]
+    assert {task["diagram"] for task in tasks} == {
+        "ree",
+        "spider",
+        "harker",
+    }
+    assert all(task["inspection"]["status"] == "ready" for task in tasks)

@@ -10,6 +10,7 @@ venv/
 # Local/private data and generated output
 local_data/
 outputs/
+skills/geoskills/examples/generated/
 tmp/
 
 # Editor and operating-system files

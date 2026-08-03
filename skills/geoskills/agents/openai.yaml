@@ -1,4 +1,4 @@
 interface:
   display_name: "GeoSkills"
-  short_description: "Create validated REE, spider, Harker, and TAS plots"
-  default_prompt: "Use $geoskills to inspect my geochemical table and create a validated REE, trace-element spider, Harker, or volcanic TAS figure bundle."
+  short_description: "Plan and create validated local geochemistry plots"
+  default_prompt: "Use $geoskills to inspect my local geochemical table, draft a reviewable plotting recipe, and create an approved REE, spider, Harker, or volcanic TAS figure bundle without uploading my data."

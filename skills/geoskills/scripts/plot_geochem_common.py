@@ -10,7 +10,13 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from plot_ree import FORMATS, GROUP_COLORS, MARKERS, PlottingError
+from geoskills_core.errors import PlottingError
+from geoskills_core.plotting import (
+    FORMATS,
+    GROUP_COLORS,
+    MARKERS,
+    publication_style,
+)
 
 
 SUBSCRIPT_TRANSLATION = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
@@ -220,13 +226,22 @@ def save_figure_bundle(
     dpi: int,
 ) -> None:
     """Save vector and raster outputs from the same Matplotlib figure."""
-    for path in paths:
-        options: dict[str, Any] = {"facecolor": "white"}
-        if path.suffix.lower() in {".png", ".tiff"}:
-            options["dpi"] = dpi
-        if path.suffix.lower() == ".tiff":
-            options["pil_kwargs"] = {"compression": "tiff_lzw"}
-        figure.savefig(path, **options)
+    with publication_style(
+        overrides={
+            "font.sans-serif": [
+                "DejaVu Sans",
+                "Arial",
+                "Liberation Sans",
+            ]
+        }
+    ):
+        for path in paths:
+            options: dict[str, Any] = {"facecolor": "white"}
+            if path.suffix.lower() in {".png", ".tiff"}:
+                options["dpi"] = dpi
+            if path.suffix.lower() == ".tiff":
+                options["pil_kwargs"] = {"compression": "tiff_lzw"}
+            figure.savefig(path, **options)
 
 
 def shareable_file_record(path: Path) -> dict[str, Any]:

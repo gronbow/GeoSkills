@@ -1,0 +1,102 @@
+# 本示例中的 true 只适用于同目录的合成数据。
+# 替换为自己的数据后，请先将所有 confirmations 改为 false，
+# 完成人工核对后再逐项设为 true；这不表示允许上传数据。
+schema_version: geoskills.recipe/v1
+
+input:
+  file: synthetic_spider_data.csv
+  sheet: null
+  layout: row-per-sample
+
+columns:
+  sample_id: Sample
+  group: Group
+  mapping:
+    Rb: Rb_ppm
+    Ba: Ba_ppm
+    Th: Th_ppm
+    U: U_ppm
+    Nb: Nb_ppm
+    Ta: Ta_ppm
+    K2O: K2O_wt%
+    La: La_ppm
+    Ce: Ce_ppm
+    Pb: Pb_ppm
+    Pr: Pr_ppm
+    Sr: Sr_ppm
+    P2O5: P2O5_wt%
+    Nd: Nd_ppm
+    Sm: Sm_ppm
+    Zr: Zr_ppm
+    Hf: Hf_ppm
+    Eu: Eu_ppm
+    TiO2: TiO2_wt%
+    Gd: Gd_ppm
+    Tb: Tb_ppm
+    Dy: Dy_ppm
+    Y: Y_ppm
+    Ho: Ho_ppm
+    Er: Er_ppm
+    Tm: Tm_ppm
+    Yb: Yb_ppm
+    Lu: Lu_ppm
+  units:
+    major_oxides: wt%
+    trace_elements: ppm
+
+output:
+  directory: generated/geoskills-spider-workflow
+  report_profile: shareable
+
+presets:
+  journal-main:
+    extends: publication-double-column
+    style:
+      width_mm: 183
+      height_mm: 120
+      dpi: 600
+
+confirmations:
+  input_structure_reviewed: true
+  column_mapping_reviewed: true
+  units_reviewed: true
+  plotted_data_export_reviewed: true
+
+tasks:
+  - id: spider-main
+    diagram: spider
+    stem: figure-spider
+    preset: journal-main
+    parameters:
+      reference: pm-sm89-modified
+      elements:
+        - Rb
+        - Ba
+        - Th
+        - U
+        - Nb
+        - Ta
+        - K
+        - La
+        - Ce
+        - Pb
+        - Pr
+        - Sr
+        - P
+        - Nd
+        - Sm
+        - Zr
+        - Hf
+        - Eu
+        - Ti
+        - Gd
+        - Tb
+        - Dy
+        - Y
+        - Ho
+        - Er
+        - Tm
+        - Yb
+        - Lu
+      groups: all
+    confirmations: {}

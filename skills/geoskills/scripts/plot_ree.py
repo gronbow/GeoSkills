@@ -22,6 +22,16 @@ from matplotlib.lines import Line2D
 from matplotlib.path import Path as MatplotlibPath
 from matplotlib.ticker import LogFormatterMathtext, LogLocator
 
+from geoskills_core.errors import PlottingError
+from geoskills_core.plotting import (
+    FORMATS,
+    GROUP_COLORS,
+    LINE_STYLES,
+    MARKERS,
+    PUBLICATION_DOUBLE_COLUMN,
+    configure_boxed_legend,
+    publication_styled,
+)
 from inspect_data import InspectionError, inspect_frame, issue, read_table
 from normalize_ree import (
     DEFAULT_REFERENCE_PATH,
@@ -32,46 +42,10 @@ from normalize_ree import (
 )
 
 
-# Keep text editable in vector exports and use portable sans-serif fallbacks.
-plt.rcParams["font.family"] = "sans-serif"
-plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans", "Liberation Sans"]
-plt.rcParams["svg.fonttype"] = "none"
-plt.rcParams["pdf.fonttype"] = 42
-plt.rcParams["font.size"] = 7
-plt.rcParams["axes.labelsize"] = 7
-plt.rcParams["axes.linewidth"] = 0.7
-plt.rcParams["xtick.labelsize"] = 7
-plt.rcParams["ytick.labelsize"] = 7
-plt.rcParams["xtick.major.width"] = 0.65
-plt.rcParams["ytick.major.width"] = 0.65
-plt.rcParams["xtick.minor.width"] = 0.5
-plt.rcParams["ytick.minor.width"] = 0.5
-plt.rcParams["axes.spines.right"] = False
-plt.rcParams["axes.spines.top"] = False
-plt.rcParams["legend.frameon"] = False
-
-
-GROUP_COLORS = [
-    "#3569A8",
-    "#D06B27",
-    "#159A80",
-    "#A84F7A",
-    "#7655A5",
-    "#8B6B4A",
-    "#4D4D4D",
-    "#4F9BC1",
-]
-MARKERS = ["o", "s", "^", "D", "v", "P", "X", "<", ">", "h", "p", "*"]
-LINE_STYLES = ["-", "--", "-.", ":"]
-FORMATS = ("svg", "pdf", "tiff", "png")
 DEFAULT_LOG_Y_MARGIN = 0.08
 AXES_FRAMES = ("open", "full")
 LEGEND_LAYOUTS = ("outside", "inside-auto")
 GRID_STYLES = ("none", "major")
-
-
-class PlottingError(Exception):
-    """An expected problem that makes figure creation unsafe."""
 
 
 def adaptive_log_y_limits(
@@ -137,16 +111,6 @@ def clean_log_y_limits(
     return lower, upper, float(lower_step), float(upper_step)
 
 
-def configure_boxed_legend(legend: Any) -> None:
-    """Apply a restrained white legend box suitable for an in-axes key."""
-    legend.set_zorder(10)
-    frame = legend.get_frame()
-    frame.set_facecolor("white")
-    frame.set_edgecolor("#A8A8A8")
-    frame.set_linewidth(0.5)
-    frame.set_alpha(0.96)
-
-
 def legends_overlap_data(
     ax: Any,
     data_lines: list[Line2D],
@@ -156,8 +120,16 @@ def legends_overlap_data(
     ax.figure.canvas.draw()
     renderer = ax.figure.canvas.get_renderer()
     boxes = [legend.get_window_extent(renderer).expanded(1.02, 1.08) for legend in legends]
+    axes_box = ax.get_window_extent(renderer)
 
     for index, box in enumerate(boxes):
+        if (
+            box.x0 < axes_box.x0
+            or box.x1 > axes_box.x1
+            or box.y0 < axes_box.y0
+            or box.y1 > axes_box.y1
+        ):
+            return True
         if any(box.overlaps(other) for other in boxes[index + 1 :]):
             return True
 
@@ -211,6 +183,7 @@ def parse_element_selection(selection: str | None, available: list[str]) -> list
     return selected
 
 
+@publication_styled(preset_parameter="style_preset")
 def build_figure(
     normalized: pd.DataFrame,
     sample_column: str,
@@ -227,6 +200,7 @@ def build_figure(
     y_label: str = "Sample / C1 chondrite",
     reference_note: str | None = None,
     x_tick_labelsize: float | None = None,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
     if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
@@ -435,11 +409,22 @@ def build_figure(
             borderaxespad=0,
         )
 
-    def add_inside_legends() -> list[Any]:
+    def add_inside_legends(
+        *,
+        group_columns: int,
+        sample_columns: int,
+        group_wrap_width: int,
+        group_fontsize: float,
+        sample_fontsize: float,
+    ) -> list[Any]:
         legends: list[Any] = []
+        sample_anchor_y = 0.985
         if group_column is not None:
             compact_group_labels = [
-                textwrap.fill(f"{group} (n={plotted_group_counts[group]})", width=22)
+                textwrap.fill(
+                    f"{group} (n={plotted_group_counts[group]})",
+                    width=group_wrap_width,
+                )
                 for group in plotted_group_order
             ]
             group_legend = ax.legend(
@@ -448,11 +433,13 @@ def build_figure(
                 loc="upper right",
                 bbox_to_anchor=(0.985, 0.985),
                 bbox_transform=ax.transAxes,
-                fontsize=5.6,
+                fontsize=group_fontsize,
                 title=group_title,
                 title_fontsize=6.1,
                 handlelength=1.65,
                 labelspacing=0.34,
+                columnspacing=0.75,
+                ncol=min(group_columns, len(group_handles)),
                 borderaxespad=0,
                 frameon=True,
                 fancybox=False,
@@ -461,19 +448,25 @@ def build_figure(
             configure_boxed_legend(group_legend)
             ax.add_artist(group_legend)
             legends.append(group_legend)
+            fig.canvas.draw()
+            renderer = fig.canvas.get_renderer()
+            group_box = group_legend.get_window_extent(renderer).transformed(
+                ax.transAxes.inverted()
+            )
+            sample_anchor_y = float(group_box.y0) - 0.018
         sample_legend = ax.legend(
             sample_handles,
             [str(sample) for sample in plotted_samples],
             loc="upper right",
-            bbox_to_anchor=(0.985, 0.66 if group_column is not None else 0.985),
+            bbox_to_anchor=(0.985, sample_anchor_y),
             bbox_transform=ax.transAxes,
-            fontsize=5.4,
+            fontsize=sample_fontsize,
             title="Sample ID (symbol)" if group_column is not None else "Sample ID",
             title_fontsize=5.9,
             handlelength=1.25,
             labelspacing=0.32,
             columnspacing=0.62,
-            ncol=min(3, len(plotted_samples)),
+            ncol=min(sample_columns, len(plotted_samples)),
             borderaxespad=0,
             frameon=True,
             fancybox=False,
@@ -492,11 +485,50 @@ def build_figure(
     )
     legend_position = "outside_right"
     legend_fallback = False
+    inside_legend_strategy: str | None = None
     if legend_layout == "inside-auto":
-        inside_legends = add_inside_legends()
-        if legends_overlap_data(ax, data_lines, inside_legends):
+        candidates = [
+            {
+                "name": "stacked",
+                "group_columns": 1,
+                "sample_columns": 3,
+                "group_wrap_width": 22,
+                "group_fontsize": 5.6,
+                "sample_fontsize": 5.4,
+            },
+            {
+                "name": "compact-two-column",
+                "group_columns": 2,
+                "sample_columns": 4,
+                "group_wrap_width": 18,
+                "group_fontsize": 5.25,
+                "sample_fontsize": 5.15,
+            },
+            {
+                "name": "compact-wide",
+                "group_columns": 2,
+                "sample_columns": 5,
+                "group_wrap_width": 16,
+                "group_fontsize": 5.05,
+                "sample_fontsize": 5.0,
+            },
+        ]
+        inside_legends: list[Any] = []
+        for candidate in candidates:
+            inside_legends = add_inside_legends(
+                group_columns=int(candidate["group_columns"]),
+                sample_columns=int(candidate["sample_columns"]),
+                group_wrap_width=int(candidate["group_wrap_width"]),
+                group_fontsize=float(candidate["group_fontsize"]),
+                sample_fontsize=float(candidate["sample_fontsize"]),
+            )
+            if not legends_overlap_data(ax, data_lines, inside_legends):
+                inside_legend_strategy = str(candidate["name"])
+                break
             for legend in inside_legends:
                 legend.remove()
+            inside_legends = []
+        if not inside_legends:
             fig.subplots_adjust(
                 left=0.095,
                 right=0.73,
@@ -560,6 +592,7 @@ def build_figure(
         "legend_layout_requested": legend_layout,
         "legend_position": legend_position,
         "legend_fallback": legend_fallback,
+        "inside_legend_strategy": inside_legend_strategy,
         "legend_collision_free": True,
         "inside_legend_collision_free": (
             not legend_fallback if legend_layout == "inside-auto" else None
@@ -611,6 +644,7 @@ def plotting_error(path: Path, message: str) -> dict[str, Any]:
     }
 
 
+@publication_styled(preset_parameter="style_preset")
 def plot_path(
     input_path: Path,
     output_dir: Path,
@@ -629,6 +663,7 @@ def plot_path(
     grid_style: str = "none",
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
     """Validate input and export a publication figure bundle from one figure."""
     figure = None
@@ -719,6 +754,7 @@ def plot_path(
             axes_frame=axes_frame,
             legend_layout=legend_layout,
             grid_style=grid_style,
+            style_preset=style_preset,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -837,6 +873,7 @@ def plot_path(
                 "png_dpi": dpi,
                 "tiff_dpi": dpi,
                 "formats": list(FORMATS),
+                "style_preset": style_preset,
             },
             "plot": plot_info,
             "outputs": [file_record(path) for path in figure_paths],

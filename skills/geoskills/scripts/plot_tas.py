@@ -21,6 +21,14 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Polygon
 from matplotlib.path import Path as MatplotlibPath
 
+from geoskills_core.errors import PlottingError
+from geoskills_core.plotting import (
+    GROUP_COLORS,
+    MARKERS,
+    PUBLICATION_DOUBLE_COLUMN,
+    configure_boxed_legend,
+    publication_styled,
+)
 from inspect_data import InspectionError, issue
 from inspect_major_data import (
     inspect_major_frame,
@@ -36,15 +44,6 @@ from plot_geochem_common import (
     shareable_file_record,
     validate_export_parameters,
 )
-from plot_ree import GROUP_COLORS, MARKERS, PlottingError, configure_boxed_legend
-
-
-plt.rcParams["font.sans-serif"] = [
-    "DejaVu Sans",
-    "Arial",
-    "Liberation Sans",
-]
-
 SKILL_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_MODEL_PATH = (
     SKILL_DIR / "assets" / "classification" / "tas-lemaitre-2002.json"
@@ -295,6 +294,16 @@ def add_tas_legend(
     return legend, "outside_right_fallback", requested_layout == "inside-auto"
 
 
+@publication_styled(
+    overrides={
+        "font.sans-serif": [
+            "DejaVu Sans",
+            "Arial",
+            "Liberation Sans",
+        ]
+    },
+    preset_parameter="style_preset",
+)
 def build_tas_figure(
     classified: pd.DataFrame,
     sample_column: str,
@@ -306,6 +315,7 @@ def build_tas_figure(
     width_mm: float,
     height_mm: float,
     legend_layout: str,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[Any, dict[str, Any]]:
     """Build one fixed-geometry volcanic TAS figure."""
     figure, ax = plt.subplots(
@@ -501,6 +511,7 @@ def plot_tas_path(
     legend_layout: str = "inside-auto",
     overwrite: bool = False,
     model_path: Path = DEFAULT_MODEL_PATH,
+    style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
     """Validate, classify, and export a volcanic TAS figure bundle."""
     figure = None
@@ -625,6 +636,7 @@ def plot_tas_path(
             width_mm,
             height_mm,
             legend_layout,
+            style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
         save_figure_bundle(figure, figure_paths, dpi)
@@ -744,6 +756,7 @@ def plot_tas_path(
                 "height_mm": height_mm,
                 "png_dpi": dpi,
                 "tiff_dpi": dpi,
+                "style_preset": style_preset,
             },
             "plot": plot_info,
             "outputs": [
