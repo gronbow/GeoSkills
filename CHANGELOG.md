@@ -2,7 +2,7 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
-## v0.4.0 — Unreleased
+## v0.4.0 — 2026-08-08
 
 - Added one provider-neutral `geoskills.py` entry point with version, environment self-check, review-only plan, and guarded run commands.
 - Added strict `geoskills.recipe/v1` YAML recipes for explicit local input, worksheet, layout, canonical column mapping, units, output profile, style preset, confirmations, and up to 32 tasks.
@@ -17,7 +17,7 @@ This file records the user-visible changes in each public GeoSkills release.
 - Added adaptive in-frame REE/spider legends and verified SVG/PDF plus 600 dpi PNG/TIFF publication artifacts.
 - Added Chinese missing-input guidance and refined TAS field-label placement for clearer beginner and visual review.
 - Removed exact source-data extrema from shareable reports and added report-level safeguards against future extrema leakage.
-- Validated the local candidate with 196 automated tests plus synthetic and published-data regression runs; GitHub publication remains gated on user review.
+- Validated the release with 196 automated tests plus synthetic and published-data regression runs.
 
 ## v0.3.0 — 2026-07-30
 

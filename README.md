@@ -2,7 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前公开正式版本为 [v0.3.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.3.0)。本分支正在审核 v0.4.0 开发候选版：它不增加新图解，而是为已有的 REE、蛛网图、Harker 和 TAS 增加统一配方、运行前计划、隐私报告和多任务原子输出。
+当前正式版本为 [v0.4.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.4.0)。它不增加新图解，而是为已有的 REE、蛛网图、Harker 和 TAS 增加统一配方、运行前计划、隐私报告和多任务原子输出。
 
 ## 当前可以做什么
 
@@ -26,7 +26,7 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
 ## 安装到 Codex
 
-公开仓库的默认分支 `main` 当前包含经过审核和自动测试的正式 v0.3.0：
+公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.4.0：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -201,7 +201,7 @@ GeoSkills/
 
 ## 当前状态
 
-GeoSkills v0.3.0 仍是当前公开正式版本。v0.4.0 开发候选版已在本地完成统一入口、严格配方、固定图解注册表、计划指纹、隐私报告和多任务原子输出，并已通过 196 项自动测试、合成数据回归和已发表数据回归。该候选版尚未上传 GitHub，需经用户最终审核批准。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.4.0 已完成统一入口、严格配方、固定图解注册表、计划指纹、隐私报告和多任务原子输出，并通过 196 项自动测试、合成数据回归和已发表数据回归。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
