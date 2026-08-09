@@ -2,7 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本为 [v0.5.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.5.0)。本分支正在开发 v0.6.0 候选版：加入显式无水100%组成基准和经专业复核、未外推的 K2O-SiO2 岩浆系列图；正式发布前仍需本地候选版审核。
+当前正式版本为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)：加入显式无水100%组成基准、经专业复核且未外推的 K2O-SiO2 岩浆系列图，以及 Zr/TiO2-Nb/Y 坐标计算与单位校验底座。
 
 ## 当前可以做什么
 
@@ -31,7 +31,7 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
 ## 安装到 Codex
 
-公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.5.0：
+公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.6.0：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -62,7 +62,7 @@ python -m venv .venv
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
-## v0.6 候选版统一工作流
+## v0.6 统一工作流
 
 可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
 
@@ -211,7 +211,7 @@ GeoSkills/
 
 ## 当前状态
 
-GeoSkills v0.6.0-dev 候选版正在本地开发和审核。当前已加入无水100%组成基准、K2O-SiO2 正式图解，以及未注册的 Zr/TiO2-Nb/Y 坐标计算测试底座；自动测试数量和最终验收结论将在完整回归后更新。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.6.0 已于 2026-08-10 正式发布。该版本加入无水100%组成基准、K2O-SiO2 正式图解，以及未注册边界的 Zr/TiO2-Nb/Y 坐标计算测试底座；发布验收包含 231 项自动测试、Skill 结构验证、合成多任务工作流、可分享产物隐私扫描，以及 Ubuntu/Windows 上 Python 3.11 和 3.12 的持续集成测试。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
