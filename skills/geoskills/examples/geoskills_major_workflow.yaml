@@ -29,6 +29,18 @@ columns:
     major_oxides: wt%
     trace_elements: ppm
 
+quality:
+  duplicate_sample_ids: error
+  non_numeric_values: error
+  major_oxide_total: null
+
+derived_variables:
+  - id: K2O_Na2O
+    operation: ratio
+    numerator: K2O
+    denominator: Na2O
+    input_unit: wt%
+
 output:
   directory: generated/geoskills-major-workflow
   report_profile: shareable

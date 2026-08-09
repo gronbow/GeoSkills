@@ -1,4 +1,4 @@
-"""Deterministic plan/run orchestration for GeoSkills v0.4."""
+"""Deterministic plan/run orchestration for GeoSkills."""
 
 from __future__ import annotations
 
@@ -445,19 +445,51 @@ def _finalize_plan(
     inspections: Mapping[str, Mapping[str, Any]],
     mapping: Sequence[Mapping[str, str]],
     source: Mapping[str, Any],
+    quality: Mapping[str, Any],
+    derived: Mapping[str, Any],
     preflight_issues: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Build the deterministic plan from one already-read data snapshot."""
 
     confirmation_issues = _confirmation_issues(recipe, tasks)
+    processing_issues = [
+        dict(issue)
+        for summary in (quality, derived)
+        for issue in summary.get("issues", [])
+        if isinstance(issue, Mapping)
+    ]
+    processing_review_required = any(
+        issue.get("severity") == "review" for issue in processing_issues
+    )
+    if (
+        processing_review_required
+        and recipe["confirmations"].get("data_quality_reviewed") is not True
+        and not any(
+            item.get("field") == "confirmations.data_quality_reviewed"
+            for item in confirmation_issues
+        )
+    ):
+        confirmation_issues.append(
+            _issue(
+                "R805",
+                "review",
+                "数据质控或派生变量存在需要人工复核的状态。",
+                field="confirmations.data_quality_reviewed",
+                suggested_action="复核计数摘要后，在配方中明确设置 data_quality_reviewed: true。",
+            )
+        )
     inspection_issues = [
         issue
         for task in tasks
         for issue in inspections[str(task["id"])]["issues"]
     ]
-    blocked = bool(preflight_issues) or any(
-        inspections[str(task["id"])]["status"] != "ready"
-        for task in tasks
+    blocked = (
+        bool(preflight_issues)
+        or any(issue.get("severity") == "error" for issue in processing_issues)
+        or any(
+            inspections[str(task["id"])]["status"] != "ready"
+            for task in tasks
+        )
     )
     status = (
         "blocked"
@@ -467,8 +499,19 @@ def _finalize_plan(
     issues = [
         *[dict(item) for item in preflight_issues],
         *confirmation_issues,
+        *processing_issues,
         *inspection_issues,
     ]
+    data_processing = {
+        "quality": {
+            "policy": deepcopy(recipe["quality"]),
+            "summary": deepcopy(dict(quality)),
+        },
+        "derived_variables": {
+            "definitions": deepcopy(recipe["derived_variables"]),
+            "summary": deepcopy(dict(derived)),
+        },
+    }
     report_profile = str(recipe["output"]["report_profile"])
     task_records = []
     for task in tasks:
@@ -498,12 +541,15 @@ def _finalize_plan(
             "schema_version": recipe["schema_version"],
             "input": recipe["input"],
             "columns": recipe["columns"],
+            "quality": recipe["quality"],
+            "derived_variables": recipe["derived_variables"],
             "output": recipe["output"],
             "presets": recipe["presets"],
             "confirmations": recipe["confirmations"],
         },
         "input": dict(source),
         "column_mapping": [dict(item) for item in mapping],
+        "data_processing": data_processing,
         "tasks": task_records,
     }
     plan_id = _digest_json(plan_basis)
@@ -518,6 +564,7 @@ def _finalize_plan(
         },
         "input": dict(source),
         "column_mapping": [dict(item) for item in mapping],
+        "data_processing": data_processing,
         "output": recipe["output"],
         "confirmations": recipe["confirmations"],
         "tasks": task_records,
@@ -577,6 +624,8 @@ def build_plan(
             }
             mapping = _mapping_snapshot(prepared)
             source = prepared.source
+            quality = prepared.quality
+            derived = prepared.derived
     except GeoSkillsError as exc:
         safe_issue = exc.to_issue()
         preflight_issues.append(safe_issue)
@@ -585,6 +634,8 @@ def build_plan(
             "format": Path(str(recipe["input"]["file"])).suffix.lower(),
         }
         mapping = []
+        quality = {}
+        derived = {}
         inspections = {
             str(task["id"]): {
                 "task_id": str(task["id"]),
@@ -615,6 +666,8 @@ def build_plan(
         inspections=inspections,
         mapping=mapping,
         source=source,
+        quality=quality,
+        derived=derived,
         preflight_issues=preflight_issues,
     )
 
@@ -805,6 +858,10 @@ def _safe_scientific_details(
         "style": deepcopy(task["style"]),
         "reference_assets": deepcopy(task["assets"]),
         "report_profile": report_profile,
+        "data_processing": {
+            "quality": deepcopy(prepared.quality),
+            "derived_variables": deepcopy(prepared.derived),
+        },
         "plot_summary": _safe_plot_summary(diagram, legacy_report),
     }
     conversions = legacy_report.get("oxide_conversions")
@@ -1028,7 +1085,11 @@ def _write_task_reports(
         )
         for path in output_paths
     ]
-    issues = _safe_run_issues(legacy_report)
+    issues = [
+        *_safe_run_issues(legacy_report),
+        *_safe_run_issues({"issues": prepared.quality.get("issues", [])}),
+        *_safe_run_issues({"issues": prepared.derived.get("issues", [])}),
+    ]
     tas_review_codes = {"W711", "W712", "W713", "W714", "W715"}
     review_required = any(
         issue["severity"] in {"review", "error"}
@@ -1315,6 +1376,8 @@ def execute_plan(
                 inspections=inspections,
                 mapping=_mapping_snapshot(prepared),
                 source=prepared.source,
+                quality=prepared.quality,
+                derived=prepared.derived,
                 preflight_issues=(),
             )
             current_plan = current["plan"]
@@ -1399,6 +1462,16 @@ def execute_plan(
                 for item in task_summaries
                 if item["status"] == "review"
             ]
+            workflow_issues.extend(
+                _safe_run_issues(
+                    {"issues": prepared.quality.get("issues", [])}
+                )
+            )
+            workflow_issues.extend(
+                _safe_run_issues(
+                    {"issues": prepared.derived.get("issues", [])}
+                )
+            )
             run_output_records = [
                 shareable_file_record(
                     path,
@@ -1435,6 +1508,9 @@ def execute_plan(
                     "report_profile": report_profile,
                     "data_confirmations": deepcopy(
                         current_plan["confirmations"]
+                    ),
+                    "data_processing": deepcopy(
+                        current_plan["data_processing"]
                     ),
                     "task_summaries": task_summaries,
                 },

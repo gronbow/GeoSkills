@@ -120,7 +120,7 @@ def issue_codes(result: dict) -> set[str]:
 
 
 def test_version_and_registry_are_fixed_and_json_ready() -> None:
-    assert VERSION == "0.4.0"
+    assert VERSION == "0.5.0"
     assert diagram_ids() == ("ree", "spider", "harker", "tas")
     assert set(DIAGRAMS) == {"ree", "spider", "harker", "tas"}
     assert BUILTIN_STYLE_PRESETS == (
@@ -207,7 +207,122 @@ def test_valid_recipe_normalizes_to_json_ready_structure() -> None:
         "K2O",
     ]
     assert result["recipe"]["columns"]["mapping"]["La"] == "La_ppm"
+    assert result["recipe"]["quality"] == {
+        "duplicate_sample_ids": "error",
+        "non_numeric_values": "error",
+        "major_oxide_total": None,
+    }
+    assert result["recipe"]["derived_variables"] == []
     json.dumps(result, ensure_ascii=False, allow_nan=False)
+
+
+def test_quality_and_same_unit_ratio_are_normalized() -> None:
+    recipe = valid_recipe()
+    recipe["quality"] = {
+        "duplicate_sample_ids": "error",
+        "non_numeric_values": "review",
+        "major_oxide_total": {
+            "analytes": ["SiO2", "Na2O", "K2O", "MgO"],
+            "lower": 95,
+            "upper": 105,
+            "composition_basis": "as-reported",
+            "severity": "review",
+        },
+    }
+    recipe["derived_variables"] = [
+        {
+            "id": "K2O_Na2O",
+            "operation": "ratio",
+            "numerator": "K2O",
+            "denominator": "Na2O",
+            "input_unit": "wt%",
+        }
+    ]
+    recipe["confirmations"]["data_quality_reviewed"] = True
+
+    result = validate_recipe(recipe)
+
+    assert result["status"] == "ready"
+    assert result["recipe"]["quality"]["major_oxide_total"]["lower"] == 95.0
+    assert result["recipe"]["derived_variables"] == [
+        {
+            "id": "K2O_Na2O",
+            "operation": "ratio",
+            "numerator": "K2O",
+            "denominator": "Na2O",
+            "input_unit": "wt%",
+        }
+    ]
+    assert result["recipe"]["confirmations"]["data_quality_reviewed"] is True
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_code"),
+    [
+        (
+            lambda recipe: recipe.update(
+                {
+                    "derived_variables": [
+                        {
+                            "id": "unsafe",
+                            "operation": "expression",
+                            "numerator": "K2O",
+                            "denominator": "Na2O",
+                        }
+                    ]
+                }
+            ),
+            "E315",
+        ),
+        (
+            lambda recipe: recipe.update(
+                {
+                    "derived_variables": [
+                        {
+                            "id": "SiO2_La",
+                            "operation": "ratio",
+                            "numerator": "SiO2",
+                            "denominator": "La",
+                        }
+                    ]
+                }
+            ),
+            "E315",
+        ),
+        (
+            lambda recipe: recipe.update(
+                {
+                    "quality": {"duplicate_sample_ids": "review"}
+                }
+            ),
+            "E306",
+        ),
+        (
+            lambda recipe: recipe.update(
+                {
+                    "quality": {
+                        "major_oxide_total": {
+                            "analytes": ["SiO2", "La"],
+                            "lower": 105,
+                            "upper": 95,
+                            "composition_basis": "unknown",
+                            "severity": "ignore",
+                        }
+                    }
+                }
+            ),
+            "E313",
+        ),
+    ],
+)
+def test_unsafe_quality_or_derived_recipe_is_rejected(mutator, expected_code: str) -> None:
+    recipe = valid_recipe()
+    mutator(recipe)
+
+    result = validate_recipe(recipe)
+
+    assert result["status"] == "invalid"
+    assert expected_code in issue_codes(result)
 
 
 def test_excel_sheet_name_preserves_significant_edge_spaces() -> None:

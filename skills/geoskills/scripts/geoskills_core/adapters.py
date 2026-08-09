@@ -1,4 +1,4 @@
-"""Thin, fixed adapters between v0.4 recipes and the reviewed v0.3 plotters."""
+"""Thin, fixed adapters between unified recipes and reviewed plotters."""
 
 from __future__ import annotations
 
@@ -17,7 +17,9 @@ from .analytes import (
     normalize_unit,
 )
 from .errors import GeoSkillsError
+from .derived import apply_derived_variables
 from .io import adapt_transposed_table, read_table, validate_input_file
+from .quality import assess_data_quality
 from .validation import ColumnMapping, validate_column_mappings
 
 
@@ -36,6 +38,8 @@ class PreparedInput:
     sample_column: str
     group_column: str | None
     mappings: tuple[ColumnMapping, ...]
+    quality: dict[str, Any]
+    derived: dict[str, Any]
 
 
 def _unit_for(
@@ -220,6 +224,34 @@ def prepare_mapped_input(
         canonical[f"{mapping.canonical_analyte}_{mapping.unit}"] = frame[
             mapping.source_column
         ]
+    mapped_column_count = int(canonical.shape[1])
+
+    analyte_columns = {
+        mapping.canonical_analyte: f"{mapping.canonical_analyte}_{mapping.unit}"
+        for mapping in mappings
+    }
+    analyte_units = {
+        mapping.canonical_analyte: mapping.unit for mapping in mappings
+    }
+    try:
+        quality = assess_data_quality(
+            canonical,
+            sample_column="Sample",
+            analyte_columns=analyte_columns,
+            analyte_units=analyte_units,
+            policy=recipe.get("quality", {}),
+        )
+        canonical, derived = apply_derived_variables(
+            canonical,
+            specifications=recipe.get("derived_variables", ()),
+            analyte_columns=analyte_columns,
+            analyte_units=analyte_units,
+        )
+    except (KeyError, ValueError) as exc:
+        raise AdapterError(
+            "数据质控或派生变量处理无法按已验证配方安全完成。",
+            code="E416",
+        ) from exc
 
     mapped_path = work_dir / "mapped_input.csv"
     canonical.to_csv(mapped_path, index=False)
@@ -237,13 +269,15 @@ def prepare_mapped_input(
         }
     }
     safe_source["row_count"] = int(canonical.shape[0])
-    safe_source["column_count"] = int(canonical.shape[1])
+    safe_source["column_count"] = mapped_column_count
     return PreparedInput(
         path=mapped_path,
         source=safe_source,
         sample_column="Sample",
         group_column="Group" if group_source is not None else None,
         mappings=mappings,
+        quality=quality,
+        derived=derived,
     )
 
 

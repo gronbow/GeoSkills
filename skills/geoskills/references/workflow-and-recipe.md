@@ -1,6 +1,6 @@
-# GeoSkills v0.4 配方与安全运行流程
+# GeoSkills v0.5 配方与安全运行流程
 
-本页解释统一工作流。它不改变 REE、蛛网图、Harker 或 TAS 的科学计算，只把已经审核过的绘图器放进同一套可检查、可重复的流程中。
+本页解释统一工作流。v0.5 在不改变 REE、蛛网图、Harker 或 TAS 科学计算的前提下，增加绘图前质控和受限派生比值，并继续把已审核绘图器放在同一套可检查、可重复流程中。
 
 ## 先理解三个词
 
@@ -82,6 +82,18 @@ columns:
     major_oxides: wt%
     trace_elements: ppm
 
+quality:
+  duplicate_sample_ids: error
+  non_numeric_values: error
+  major_oxide_total: null
+
+derived_variables:
+  - id: La_Ce
+    operation: ratio
+    numerator: La
+    denominator: Ce
+    input_unit: ppm
+
 output:
   directory: geoskills-output
   report_profile: shareable
@@ -93,6 +105,7 @@ confirmations:
   column_mapping_reviewed: true
   units_reviewed: true
   plotted_data_export_reviewed: true
+  data_quality_reviewed: true
 
 tasks:
   - id: ree-main
@@ -109,6 +122,8 @@ tasks:
 `columns.mapping` 的方向固定为“标准分析物名称 → 原始表列名”。GeoSkills 不会用近似拼写猜测映射。
 
 `plotted_data_export_reviewed: true` 只表示已经核对 `report_profile` 的导出后果：`shareable` 不保留逐样品 CSV，`local-reproducible` 会保留敏感 CSV。它不表示允许把数据上传到模型、分析服务或第三方服务器。
+
+`quality` 和 `derived_variables` 都是可选字段。省略 `quality` 时仍会采用保守默认值：重复样品编号和非数字/非有限内容作为错误，不开启主量总量范围检查。`data_quality_reviewed` 只有在计数摘要出现 `review` 状态时才必须明确为 `true`；模型不能代替用户确认。完整规则见 [数据质控与派生比值](data-quality-and-derived-variables.md)。
 
 ## 输入
 
@@ -130,6 +145,7 @@ tasks:
 - 直接元素浓度必须明确为 `ppm`；
 - K、P、Ti 若没有直接 ppm 列，可分别映射 `K2O`、`P2O5`、`TiO2` 的 wt% 列，蛛网图绘图器再使用已审核的固定化学计量换算；
 - 不支持其他隐式单位换算。
+- 配方中的普通派生比值只允许相同单位相除，例如 `Nb/Y` 或 `K2O/Na2O`；不支持任意公式字符串、代码执行或混合单位比值。
 
 如果原始列名已经明确写出分析物或单位，例如 `La_ppb` 或 `Ce_ppm`，但配方把它声明为另一单位或另一分析物，计划会直接阻止运行。GeoSkills 不会把这种冲突当作“用户自定义映射”而静默改名；需要先回到原始数据和方法说明核对。
 
@@ -254,8 +270,8 @@ geoskills-output/
 
 ## 常见非 `ready` 状态与停止原因
 
-- `needs_confirmation`：配方中仍有 `false` 的人工确认项；
-- `blocked`：输入结构、列映射、单位、所需分析物或科学适用性未通过；
+- `needs_confirmation`：配方中仍有 `false` 的人工确认项，或质控/派生摘要需要复核但尚未确认；
+- `blocked`：输入结构、列映射、单位、数据质控错误、所需分析物或科学适用性未通过；
 - `review`：图件已经生成，但边界样品或其他科学状态必须人工复核；
 - 旧计划失效：配方、输入文件、任务参数、内置参考或工具版本发生变化；
 - 输出已存在：需要先审核旧结果，再明确使用 `--overwrite`；
