@@ -1,6 +1,6 @@
 # REE input data contract
 
-This file records the REE input rules introduced in GeoSkills v0.1.0 and retained through v0.4.0.
+This file records the REE input rules introduced in GeoSkills v0.1.0 and retained through the v0.5 development line.
 
 ## Required information
 
@@ -26,7 +26,7 @@ This file records the REE input rules introduced in GeoSkills v0.1.0 and retaine
 
 ## Invalid or incomplete data
 
-- Report non-numeric cells with their sample and column.
+- In local inspection, report enough context to repair non-numeric cells. In shareable plans and reports, expose only counts and never sample identifiers, cell values, or exact source extrema.
 - Preserve blank cells as missing values.
 - Treat strings such as `<0.01`, `BDL`, and `n.d.` as detection-limit states, not as zero.
 - Reject zero and negative values for logarithmic REE plots.

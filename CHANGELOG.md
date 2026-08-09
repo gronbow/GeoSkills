@@ -2,6 +2,15 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
+## Unreleased — v0.5 development
+
+- Added privacy-safe table-wide QA summaries for blank or duplicate sample identifiers, missing values, below-detection-limit states, non-numeric or non-finite cells, and nonpositive values.
+- Added an optional, explicitly configured major-oxide total check. GeoSkills does not invent a total range or composition basis.
+- Added deterministic same-unit ratios such as `Nb/Y` or `K2O/Na2O`; arbitrary formula strings, code evaluation, and silent mixed-unit conversion remain unsupported.
+- Added a versioned generic classification-model foundation with literature provenance, scientific-review state, SHA-256 pinning, strict geometry validation, log-axis handling, boundary review, and overlap review.
+- Kept the public diagram registry at REE, spider, Harker, and TAS. No new scientific classification boundary has been added in this development phase.
+- Added QA and derived-variable settings and count-only summaries to plan fingerprints and shareable reports without sample identifiers or source values.
+
 ## v0.4.0 — 2026-08-08
 
 - Added one provider-neutral `geoskills.py` entry point with version, environment self-check, review-only plan, and guarded run commands.

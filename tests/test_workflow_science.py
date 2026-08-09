@@ -59,6 +59,9 @@ def _write_recipe(
     units: dict[str, str],
     tasks: list[dict[str, Any]],
     report_profile: str = "shareable",
+    quality: dict[str, Any] | None = None,
+    derived_variables: list[dict[str, Any]] | None = None,
+    data_quality_reviewed: bool | None = None,
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     frame.to_csv(directory / "input.csv", index=False)
@@ -89,9 +92,20 @@ def _write_recipe(
                 },
             }
         },
-        "confirmations": TOP_CONFIRMATIONS,
+        "confirmations": {
+            **TOP_CONFIRMATIONS,
+            **(
+                {"data_quality_reviewed": data_quality_reviewed}
+                if data_quality_reviewed is not None
+                else {}
+            ),
+        },
         "tasks": tasks,
     }
+    if quality is not None:
+        recipe["quality"] = quality
+    if derived_variables is not None:
+        recipe["derived_variables"] = derived_variables
     path = directory / "recipe.yaml"
     path.write_text(
         yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
@@ -112,6 +126,199 @@ def _issue_codes(value: object) -> set[str]:
         for child in value:
             codes.update(_issue_codes(child))
     return codes
+
+
+def test_quality_error_blocks_plan_without_leaking_rows_or_values(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["PRIVATE-ROW-A", "PRIVATE-ROW-B"],
+            "La_ppm": [20.0, "confidential-invalid-token"],
+            "Ce_ppm": [40.0, 44.0],
+            "Pr_ppm": [5.0, 5.5],
+        }
+    )
+    recipe_path = _write_recipe(
+        tmp_path / "quality-error",
+        frame,
+        mapping={element: f"{element}_ppm" for element in REE_ELEMENTS},
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "ree-main",
+                "ree",
+                {
+                    "reference": "chondrite-sm89",
+                    "elements": REE_ELEMENTS,
+                    "groups": "all",
+                },
+            )
+        ],
+    )
+
+    result = build_plan(recipe_path)
+    encoded = json.dumps(result, ensure_ascii=False, allow_nan=False)
+
+    assert result["status"] == "blocked"
+    assert "Q003" in _issue_codes(result)
+    assert "PRIVATE-ROW" not in encoded
+    assert "confidential-invalid-token" not in encoded
+
+
+def test_quality_review_requires_confirmation_and_is_audited(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["PRIVATE-ROW-A", "PRIVATE-ROW-B"],
+            "La_ppm": [20.0, 22.0],
+            "Ce_ppm": [40.0, 44.0],
+            "Pr_ppm": [5.0, 5.5],
+            "SiO2_wt%": [60.0, 65.0],
+            "Na2O_wt%": [20.0, 20.0],
+        }
+    )
+    case = tmp_path / "quality-review"
+    task = _task(
+        "ree-main",
+        "ree",
+        {
+            "reference": "chondrite-sm89",
+            "elements": REE_ELEMENTS,
+            "groups": "all",
+        },
+    )
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={
+            **{element: f"{element}_ppm" for element in REE_ELEMENTS},
+            "SiO2": "SiO2_wt%",
+            "Na2O": "Na2O_wt%",
+        },
+        units={"trace_elements": "ppm", "major_oxides": "wt%"},
+        tasks=[task],
+        quality={
+            "major_oxide_total": {
+                "analytes": ["SiO2", "Na2O"],
+                "lower": 95,
+                "upper": 105,
+                "composition_basis": "as-reported",
+                "severity": "review",
+            }
+        },
+    )
+
+    first = build_plan(recipe_path)
+    assert first["status"] == "needs_confirmation"
+    assert {"Q007", "R805"} <= _issue_codes(first)
+
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={
+            **{element: f"{element}_ppm" for element in REE_ELEMENTS},
+            "SiO2": "SiO2_wt%",
+            "Na2O": "Na2O_wt%",
+        },
+        units={"trace_elements": "ppm", "major_oxides": "wt%"},
+        tasks=[task],
+        quality={
+            "major_oxide_total": {
+                "analytes": ["SiO2", "Na2O"],
+                "lower": 95,
+                "upper": 105,
+                "composition_basis": "as-reported",
+                "severity": "review",
+            }
+        },
+        data_quality_reviewed=True,
+    )
+    plan_path = case / "plan.json"
+    planned = create_plan(recipe_path, plan_path)
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert planned["status"] == "ready"
+    assert executed["status"] == "review"
+    task_report = json.loads(
+        (case / "bundle" / "ree-main" / "figure-ree-main.report.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    quality = task_report["details"]["data_processing"]["quality"]
+    assert quality["major_oxide_total"]["below_range_count"] == 2
+    assert quality["major_oxide_total"]["evaluated_row_count"] == 2
+    encoded = json.dumps(task_report, ensure_ascii=False, allow_nan=False)
+    assert "PRIVATE-ROW" not in encoded
+
+
+def test_derived_ratio_is_pinned_in_plan_and_shareable_report(
+    tmp_path: Path,
+) -> None:
+    elements = ["Rb", "Ba", "Th", "U", "Nb", "Y"]
+    frame = pd.DataFrame(
+        {
+            "Sample": ["A", "B", "C"],
+            **{
+                f"{element}_ppm": [float(index + 1), float(index + 2), float(index + 3)]
+                for index, element in enumerate(elements)
+            },
+        }
+    )
+    case = tmp_path / "derived-ratio"
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={element: f"{element}_ppm" for element in elements},
+        units={"trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "spider-main",
+                "spider",
+                {
+                    "reference": "pm-sm89",
+                    "elements": ["Rb", "Ba", "Th", "U", "Nb"],
+                    "groups": "all",
+                },
+            )
+        ],
+        derived_variables=[
+            {
+                "id": "Nb_Y",
+                "operation": "ratio",
+                "numerator": "Nb",
+                "denominator": "Y",
+                "input_unit": "ppm",
+            }
+        ],
+    )
+    plan_path = case / "plan.json"
+
+    planned = create_plan(recipe_path, plan_path)
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert planned["status"] == "ready"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    summary = plan["data_processing"]["derived_variables"]["summary"]
+    assert summary["variable_count"] == 1
+    assert summary["variables"][0]["valid_count"] == 3
+    assert executed["status"] == "ready"
+    report = json.loads(
+        (
+            case
+            / "bundle"
+            / "spider-main"
+            / "figure-spider-main.report.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert (
+        report["details"]["data_processing"]["derived_variables"]["variables"][0][
+            "formula"
+        ]
+        == "Nb/Y"
+    )
+    assert not list((case / "bundle").rglob("*.source_data.csv"))
 
 
 @pytest.mark.parametrize(

@@ -1,9 +1,9 @@
 ---
 name: geoskills
-description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, and guarded volcanic TAS classification; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
+description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, and guarded volcanic TAS classification; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
 ---
 
-# GeoSkills v0.4 workflow
+# GeoSkills v0.5 development workflow
 
 Use deterministic local Python for all table reading, normalization, classification, plotting, and export. The language model may guide choices and explain results, but must not calculate normalized ratios, convert oxides, or classify TAS fields manually.
 
@@ -13,15 +13,16 @@ Prefer the unified `scripts/geoskills.py` workflow:
 
 1. Run `self-check`.
 2. Inspect the user's table locally.
-3. Draft a versioned YAML recipe with explicit input layout, column mappings, units, output profile, tasks, and confirmations.
+3. Draft a versioned YAML recipe with explicit input layout, column mappings, units, optional QA policy, optional same-unit ratios, output profile, tasks, and confirmations.
 4. Keep every unverified confirmation as `false`. Never mark a scientific or data confirmation `true` merely to make the workflow continue.
-5. Run `plan`. This checks the recipe, input, selected analytes, scientific assets, and expected outputs without creating figures.
+5. Run `plan`. This checks the recipe, input, count-only QA summary, derived-variable summary, selected analytes, scientific assets, and expected outputs without creating figures.
 6. Explain any `blocked` or `needs_confirmation` issue in plain language. Revise only after the user supplies the missing information.
 7. Show the ready plan's diagram types, reference choices, dimensions, output profile, and plan ID. Obtain the user's approval before `run`.
 8. Run the approved, unchanged plan.
 9. Inspect final-size PNG/TIFF output, JSON reports, and Chinese QA summaries before returning the bundle.
 
 Read [references/workflow-and-recipe.md](references/workflow-and-recipe.md) when creating or explaining a recipe.
+Read [references/data-quality-and-derived-variables.md](references/data-quality-and-derived-variables.md) before configuring QA thresholds or ratios.
 
 ## Route each task
 
@@ -32,6 +33,8 @@ Read [references/workflow-and-recipe.md](references/workflow-and-recipe.md) when
 
 Stop if the requested diagram is outside this fixed registry. Do not imply support for isotope, tectonic-discrimination, or other diagram families.
 
+The generic classification-model code is a development foundation, not a fifth registered diagram. Read [references/classification-model-contract.md](references/classification-model-contract.md) before adding or reviewing any future classification asset.
+
 ## Scientific confirmation gates
 
 Require the user or a qualified reviewer to confirm:
@@ -41,6 +44,7 @@ Require the user or a qualified reviewer to confirm:
 - canonical-to-source column mappings;
 - wt% for major oxides and ppm for direct elemental concentrations;
 - whether plotted source data may be retained;
+- any user-selected main-oxide total range, composition basis, and QA review state;
 - for TAS, that the samples are volcanic and whether the basis is `anhydrous-normalized` or `as-reported`.
 
 Never infer TAS applicability from sample names or values. Do not apply volcanic TAS fields to plutonic rocks, carbonatites, kimberlites, lamproites, or strongly altered compositions. Treat `as-reported` TAS results as provisional and boundary cases as requiring review.
@@ -48,6 +52,8 @@ Never infer TAS applicability from sample names or values. Do not apply volcanic
 ## Data and value safeguards
 
 - Preserve blanks and below-detection-limit states as missing. Never replace them with zero or an invented detection limit.
+- Keep QA summaries count-only in shareable plans and reports; never expose affected sample IDs, cells, or exact source extrema.
+- Allow public recipe ratios only when numerator and denominator have identical declared units. Never execute formula strings or silently convert mixed units.
 - Reject negative concentrations and duplicate analyte mappings.
 - Permit true zero only on linear Harker or TAS axes.
 - Reject finite zero and negative values on logarithmic REE or spider axes.

@@ -1,4 +1,4 @@
-"""Safe, strict YAML recipe validation for the GeoSkills v0.4 workflow."""
+"""Safe, strict YAML recipe validation for the GeoSkills workflow."""
 
 from __future__ import annotations
 
@@ -29,9 +29,15 @@ _ROOT_FIELDS = {
     "output",
     "presets",
     "confirmations",
+    "quality",
+    "derived_variables",
     "tasks",
 }
-_REQUIRED_ROOT_FIELDS = _ROOT_FIELDS - {"presets"}
+_REQUIRED_ROOT_FIELDS = _ROOT_FIELDS - {
+    "presets",
+    "quality",
+    "derived_variables",
+}
 _INPUT_FIELDS = {"file", "sheet", "layout"}
 _COLUMN_FIELDS = {"sample_id", "group", "mapping", "units"}
 _OUTPUT_FIELDS = {"directory", "report_profile"}
@@ -51,6 +57,7 @@ _TOP_CONFIRMATIONS = (
     "units_reviewed",
     "plotted_data_export_reviewed",
 )
+_OPTIONAL_TOP_CONFIRMATIONS = ("data_quality_reviewed",)
 _TAS_CONFIRMATIONS = (
     "volcanic_samples",
     "composition_basis_reviewed",
@@ -97,6 +104,24 @@ _LAYOUTS = frozenset(
     {"row-per-sample", "analyte-per-row", "auto"}
 )
 _REPORT_PROFILES = frozenset({"shareable", "local-reproducible"})
+_QUALITY_FIELDS = frozenset(
+    {"duplicate_sample_ids", "non_numeric_values", "major_oxide_total"}
+)
+_MAJOR_TOTAL_FIELDS = frozenset(
+    {
+        "analytes",
+        "lower",
+        "upper",
+        "composition_basis",
+        "severity",
+    }
+)
+_DERIVED_FIELDS = frozenset(
+    {"id", "operation", "numerator", "denominator", "input_unit"}
+)
+_DUPLICATE_POLICIES = frozenset({"error"})
+_INVALID_VALUE_POLICIES = frozenset({"warning", "review", "error"})
+MAX_DERIVED_VARIABLES = 32
 
 
 def _issue(
@@ -523,6 +548,344 @@ def _validate_columns(
     normalized["mapping"] = dict(sorted(normalized_mapping.items()))
     normalized["units"] = dict(sorted(normalized_units.items()))
     return normalized, set(normalized_mapping)
+
+
+def _declared_unit(canonical: str, columns: Mapping[str, Any]) -> str | None:
+    units = columns.get("units", {})
+    if canonical in units:
+        return str(units[canonical])
+    definition = DEFAULT_ANALYTE_REGISTRY.get(canonical)
+    if definition is None:
+        return None
+    family = (
+        "major_oxides"
+        if definition.kind == "major_oxide"
+        else "trace_elements"
+    )
+    value = units.get(family)
+    return None if value is None else str(value)
+
+
+def _finite_number(
+    value: Any,
+    field: str,
+    issues: list[dict[str, str]],
+    *,
+    positive: bool = False,
+) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        issues.append(
+            _issue("E306", "error", "该字段必须是有限数值。", field=field)
+        )
+        return None
+    result = float(value)
+    if not math.isfinite(result) or (positive and result <= 0):
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "该字段必须是正的有限数值。" if positive else "该字段必须是有限数值。",
+                field=field,
+            )
+        )
+        return None
+    return result
+
+
+def _validate_quality(
+    raw: Any,
+    columns: Mapping[str, Any],
+    mapped: set[str],
+    issues: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Validate explicit QA policy without inventing scientific thresholds."""
+
+    if raw is None:
+        return {
+            "duplicate_sample_ids": "error",
+            "non_numeric_values": "error",
+            "major_oxide_total": None,
+        }
+    value = _mapping(raw, "quality", issues)
+    _unknown_fields(value, _QUALITY_FIELDS, "quality", issues)
+    normalized: dict[str, Any] = {}
+
+    duplicate_policy = value.get("duplicate_sample_ids", "error")
+    if duplicate_policy not in _DUPLICATE_POLICIES:
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "duplicate_sample_ids 必须明确为 error；每条分析记录都需要唯一编号。",
+                field="quality.duplicate_sample_ids",
+            )
+        )
+    else:
+        normalized["duplicate_sample_ids"] = duplicate_policy
+
+    invalid_policy = value.get("non_numeric_values", "error")
+    if invalid_policy not in _INVALID_VALUE_POLICIES:
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "non_numeric_values 必须是 warning、review 或 error。",
+                field="quality.non_numeric_values",
+            )
+        )
+    else:
+        normalized["non_numeric_values"] = invalid_policy
+
+    raw_total = value.get("major_oxide_total")
+    if raw_total is None:
+        normalized["major_oxide_total"] = None
+        return normalized
+    total = _mapping(raw_total, "quality.major_oxide_total", issues)
+    _unknown_fields(
+        total,
+        _MAJOR_TOTAL_FIELDS,
+        "quality.major_oxide_total",
+        issues,
+    )
+    _missing_fields(
+        total,
+        _MAJOR_TOTAL_FIELDS,
+        "quality.major_oxide_total",
+        issues,
+    )
+
+    raw_analytes = total.get("analytes")
+    normalized_analytes: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(raw_analytes, list) or len(raw_analytes) < 2:
+        issues.append(
+            _issue(
+                "E313",
+                "error",
+                "major_oxide_total.analytes 至少需要两个主量氧化物。",
+                field="quality.major_oxide_total.analytes",
+            )
+        )
+    else:
+        for index, analyte in enumerate(raw_analytes):
+            field = f"quality.major_oxide_total.analytes[{index}]"
+            name = _nonempty_string(analyte, field, issues)
+            if name is None:
+                continue
+            definition = DEFAULT_ANALYTE_REGISTRY.get(name)
+            if (
+                definition is None
+                or definition.kind != "major_oxide"
+                or name not in mapped
+                or _declared_unit(name, columns) != "wt%"
+            ):
+                issues.append(
+                    _issue(
+                        "E313",
+                        "error",
+                        "求和项必须是已映射且单位为 wt% 的精确主量氧化物名称。",
+                        field=field,
+                    )
+                )
+                continue
+            if name in seen:
+                issues.append(
+                    _issue(
+                        "E308",
+                        "error",
+                        "major_oxide_total.analytes 不能重复。",
+                        field=field,
+                    )
+                )
+                continue
+            seen.add(name)
+            normalized_analytes.append(name)
+
+    lower = _finite_number(
+        total.get("lower"), "quality.major_oxide_total.lower", issues, positive=True
+    )
+    upper = _finite_number(
+        total.get("upper"), "quality.major_oxide_total.upper", issues, positive=True
+    )
+    if lower is not None and upper is not None and lower >= upper:
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "major_oxide_total.lower 必须小于 upper。",
+                field="quality.major_oxide_total",
+            )
+        )
+    basis = total.get("composition_basis")
+    if basis not in {"as-reported", "anhydrous-normalized"}:
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "composition_basis 必须是 as-reported 或 anhydrous-normalized。",
+                field="quality.major_oxide_total.composition_basis",
+            )
+        )
+    severity = total.get("severity")
+    if severity not in _INVALID_VALUE_POLICIES:
+        issues.append(
+            _issue(
+                "E306",
+                "error",
+                "major_oxide_total.severity 必须是 warning、review 或 error。",
+                field="quality.major_oxide_total.severity",
+            )
+        )
+    normalized["major_oxide_total"] = {
+        "analytes": normalized_analytes,
+        "lower": lower,
+        "upper": upper,
+        "composition_basis": basis,
+        "severity": severity,
+    }
+    return normalized
+
+
+def _validate_derived_variables(
+    raw: Any,
+    columns: Mapping[str, Any],
+    mapped: set[str],
+    issues: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Allow only same-unit division; arbitrary expressions are unsupported."""
+
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        issues.append(
+            _issue(
+                "E306", "error", "derived_variables 必须是列表。", field="derived_variables"
+            )
+        )
+        return []
+    if len(raw) > MAX_DERIVED_VARIABLES:
+        issues.append(
+            _issue(
+                "E309",
+                "error",
+                f"单个配方最多允许 {MAX_DERIVED_VARIABLES} 个派生变量。",
+                field="derived_variables",
+            )
+        )
+    normalized: list[dict[str, str]] = []
+    identifiers: dict[str, str] = {}
+    for index, raw_spec in enumerate(raw[:MAX_DERIVED_VARIABLES]):
+        field = f"derived_variables[{index}]"
+        spec = _mapping(raw_spec, field, issues)
+        _unknown_fields(spec, _DERIVED_FIELDS, field, issues)
+        _missing_fields(
+            spec,
+            _DERIVED_FIELDS - {"input_unit"},
+            field,
+            issues,
+        )
+        variable_id = _safe_windows_name(spec.get("id"), f"{field}.id", issues)
+        if variable_id is not None:
+            identifier_key = variable_id.casefold()
+            if identifier_key in identifiers:
+                issues.append(
+                    _issue(
+                        "E308",
+                        "error",
+                        f"派生变量 ID 与 {identifiers[identifier_key]!r} 重复。",
+                        field=f"{field}.id",
+                    )
+                )
+            else:
+                identifiers[identifier_key] = variable_id
+
+        operation = spec.get("operation")
+        if operation != "ratio":
+            issues.append(
+                _issue(
+                    "E315",
+                    "error",
+                    "当前公开配方只支持固定 ratio 运算，不支持公式字符串或表达式求值。",
+                    field=f"{field}.operation",
+                )
+            )
+
+        operands: dict[str, str | None] = {}
+        for role in ("numerator", "denominator"):
+            name = _nonempty_string(spec.get(role), f"{field}.{role}", issues)
+            operands[role] = name
+            if name is not None and name not in mapped:
+                issues.append(
+                    _issue(
+                        "E313",
+                        "error",
+                        f"{name} 未在 columns.mapping 中映射到来源列。",
+                        field=f"{field}.{role}",
+                    )
+                )
+            elif name is not None and DEFAULT_ANALYTE_REGISTRY.get(name) is None:
+                issues.append(
+                    _issue(
+                        "E313",
+                        "error",
+                        "派生比值必须使用精确标准分析物名称。",
+                        field=f"{field}.{role}",
+                    )
+                )
+        numerator = operands["numerator"]
+        denominator = operands["denominator"]
+        if numerator is not None and numerator == denominator:
+            issues.append(
+                _issue(
+                    "E315",
+                    "error",
+                    "派生比值的分子和分母不能相同。",
+                    field=field,
+                )
+            )
+        numerator_unit = (
+            _declared_unit(numerator, columns) if numerator is not None else None
+        )
+        denominator_unit = (
+            _declared_unit(denominator, columns) if denominator is not None else None
+        )
+        if (
+            numerator_unit is not None
+            and denominator_unit is not None
+            and numerator_unit != denominator_unit
+        ):
+            issues.append(
+                _issue(
+                    "E315",
+                    "error",
+                    "公开派生比值只允许两个单位完全相同的分析物。",
+                    field=field,
+                )
+            )
+        declared_input_unit = spec.get("input_unit", numerator_unit)
+        if (
+            not isinstance(declared_input_unit, str)
+            or declared_input_unit != numerator_unit
+            or declared_input_unit != denominator_unit
+        ):
+            issues.append(
+                _issue(
+                    "E315",
+                    "error",
+                    "input_unit 必须与分子和分母的已声明单位完全一致。",
+                    field=f"{field}.input_unit",
+                )
+            )
+        normalized.append(
+            {
+                "id": variable_id,
+                "operation": operation,
+                "numerator": numerator,
+                "denominator": denominator,
+                "input_unit": declared_input_unit,
+            }
+        )
+    return normalized
 
 
 def _validate_output(
@@ -1141,6 +1504,12 @@ def validate_recipe(document: Any) -> dict[str, Any]:
 
     normalized_input = _validate_input(root.get("input"), issues)
     normalized_columns, mapped = _validate_columns(root.get("columns"), issues)
+    normalized_quality = _validate_quality(
+        root.get("quality"), normalized_columns, mapped, issues
+    )
+    normalized_derived = _validate_derived_variables(
+        root.get("derived_variables"), normalized_columns, mapped, issues
+    )
     normalized_output = _validate_output(root.get("output"), issues)
     normalized_presets, preset_names = _validate_presets(
         root.get("presets"), issues
@@ -1150,6 +1519,7 @@ def validate_recipe(document: Any) -> dict[str, Any]:
         _TOP_CONFIRMATIONS,
         "confirmations",
         issues,
+        optional=_OPTIONAL_TOP_CONFIRMATIONS,
     )
     normalized_tasks = _validate_tasks(
         root.get("tasks"),
@@ -1162,6 +1532,8 @@ def validate_recipe(document: Any) -> dict[str, Any]:
         "schema_version": RECIPE_SCHEMA_VERSION,
         "input": normalized_input,
         "columns": normalized_columns,
+        "quality": normalized_quality,
+        "derived_variables": normalized_derived,
         "output": normalized_output,
         "presets": normalized_presets,
         "confirmations": normalized_confirmations,
@@ -1259,6 +1631,7 @@ def resolve_recipe_path(recipe_path: str | Path, relative_value: str) -> Path:
 
 __all__ = [
     "MAX_RECIPE_BYTES",
+    "MAX_DERIVED_VARIABLES",
     "MAX_TASKS",
     "RECIPE_SCHEMA_VERSION",
     "load_recipe",
