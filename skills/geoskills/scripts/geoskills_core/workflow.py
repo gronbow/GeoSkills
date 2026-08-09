@@ -51,6 +51,9 @@ _ASSET_PATHS = {
     ),
     "nmorb-sm89": "assets/normalization/nmorb-sm89.json",
     "tas-lemaitre-2002": "assets/classification/tas-lemaitre-2002.json",
+    "k2o-sio2-pt76-r89-original": (
+        "assets/classification/k2o-sio2-pt76-r89-original.json"
+    ),
 }
 _BUILTIN_STYLE_DEFAULTS: Mapping[str, Mapping[str, int | float]] = {
     "publication-double-column": {
@@ -82,6 +85,7 @@ _DIAGRAM_STYLE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
         "margin_fraction": 0.06,
     },
     "tas": {"legend_layout": "inside-auto"},
+    "k2o-sio2": {"legend_layout": "inside-auto"},
 }
 
 
@@ -230,6 +234,8 @@ def _asset_ids(task: Mapping[str, Any]) -> tuple[str, ...]:
         return (str(task["parameters"]["reference"]),)
     if diagram == "tas":
         return ("tas-lemaitre-2002",)
+    if diagram == "k2o-sio2":
+        return ("k2o-sio2-pt76-r89-original",)
     return ()
 
 
@@ -265,7 +271,13 @@ def _asset_records(task: Mapping[str, Any]) -> list[dict[str, Any]]:
         }
         if document.get("unit") is not None:
             record["unit"] = str(document["unit"])
-        for key in ("doi", "table", "classification_doi", "boundary_doi"):
+        for key in (
+            "doi",
+            "geometry_doi",
+            "table",
+            "classification_doi",
+            "boundary_doi",
+        ):
             if source.get(key) is not None:
                 record[key] = str(source[key])
         records.append(record)
@@ -447,6 +459,7 @@ def _finalize_plan(
     source: Mapping[str, Any],
     quality: Mapping[str, Any],
     derived: Mapping[str, Any],
+    basis: Mapping[str, Any],
     preflight_issues: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
     """Build the deterministic plan from one already-read data snapshot."""
@@ -454,7 +467,7 @@ def _finalize_plan(
     confirmation_issues = _confirmation_issues(recipe, tasks)
     processing_issues = [
         dict(issue)
-        for summary in (quality, derived)
+        for summary in (quality, derived, basis)
         for issue in summary.get("issues", [])
         if isinstance(issue, Mapping)
     ]
@@ -511,6 +524,10 @@ def _finalize_plan(
             "definitions": deepcopy(recipe["derived_variables"]),
             "summary": deepcopy(dict(derived)),
         },
+        "data_basis": {
+            "definition": deepcopy(recipe.get("data_basis")),
+            "summary": deepcopy(dict(basis)),
+        },
     }
     report_profile = str(recipe["output"]["report_profile"])
     task_records = []
@@ -543,6 +560,7 @@ def _finalize_plan(
             "columns": recipe["columns"],
             "quality": recipe["quality"],
             "derived_variables": recipe["derived_variables"],
+            "data_basis": recipe.get("data_basis"),
             "output": recipe["output"],
             "presets": recipe["presets"],
             "confirmations": recipe["confirmations"],
@@ -626,6 +644,7 @@ def build_plan(
             source = prepared.source
             quality = prepared.quality
             derived = prepared.derived
+            basis = prepared.basis
     except GeoSkillsError as exc:
         safe_issue = exc.to_issue()
         preflight_issues.append(safe_issue)
@@ -636,6 +655,7 @@ def build_plan(
         mapping = []
         quality = {}
         derived = {}
+        basis = {}
         inspections = {
             str(task["id"]): {
                 "task_id": str(task["id"]),
@@ -668,6 +688,7 @@ def build_plan(
         source=source,
         quality=quality,
         derived=derived,
+        basis=basis,
         preflight_issues=preflight_issues,
     )
 
@@ -803,6 +824,16 @@ def _safe_plot_summary(
             "y_limits",
             "legend_fallback",
         },
+        "k2o-sio2": {
+            "classification_status_counts",
+            "field_counts",
+            "x_limits",
+            "y_limits",
+            "complete_domain_x",
+            "visible_coordinate_count",
+            "outside_axes_count",
+            "legend_fallback",
+        },
     }
     allowed = common | diagram_fields.get(diagram, set())
 
@@ -861,6 +892,7 @@ def _safe_scientific_details(
         "data_processing": {
             "quality": deepcopy(prepared.quality),
             "derived_variables": deepcopy(prepared.derived),
+            "data_basis": deepcopy(prepared.basis),
         },
         "plot_summary": _safe_plot_summary(diagram, legacy_report),
     }
@@ -1089,13 +1121,19 @@ def _write_task_reports(
         *_safe_run_issues(legacy_report),
         *_safe_run_issues({"issues": prepared.quality.get("issues", [])}),
         *_safe_run_issues({"issues": prepared.derived.get("issues", [])}),
+        *_safe_run_issues({"issues": prepared.basis.get("issues", [])}),
     ]
     tas_review_codes = {"W711", "W712", "W713", "W714", "W715"}
+    k2o_review_codes = {"W811", "W812", "W813", "W814", "W815"}
     review_required = any(
         issue["severity"] in {"review", "error"}
         or (
             str(task["diagram"]) == "tas"
             and issue["code"] in tas_review_codes
+        )
+        or (
+            str(task["diagram"]) == "k2o-sio2"
+            and issue["code"] in k2o_review_codes
         )
         for issue in issues
     )
@@ -1378,6 +1416,7 @@ def execute_plan(
                 source=prepared.source,
                 quality=prepared.quality,
                 derived=prepared.derived,
+                basis=prepared.basis,
                 preflight_issues=(),
             )
             current_plan = current["plan"]
@@ -1470,6 +1509,11 @@ def execute_plan(
             workflow_issues.extend(
                 _safe_run_issues(
                     {"issues": prepared.derived.get("issues", [])}
+                )
+            )
+            workflow_issues.extend(
+                _safe_run_issues(
+                    {"issues": prepared.basis.get("issues", [])}
                 )
             )
             run_output_records = [

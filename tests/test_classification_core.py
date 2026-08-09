@@ -22,6 +22,7 @@ from geoskills_core.classification import (  # noqa: E402
     add_classification_background,
     classify_coordinates,
     evaluate_model_axes,
+    evaluate_variable,
     load_classification_model,
     summarize_classifications,
     validate_classification_model,
@@ -197,6 +198,40 @@ def test_axes_are_evaluated_without_expression_parsing() -> None:
             analyte_columns={"Nb": "Nb_ppm", "Y": "Y_ppm", "SiO2": "SiO2_wt%"},
             analyte_units={"Nb": "ppm", "Y": "wt%", "SiO2": "wt%"},
         )
+
+
+def test_winchester_floyd_coordinate_formula_is_supported_without_boundaries() -> None:
+    document = synthetic_model()
+    document["variables"][0] = {
+        "id": "zr_tio2_scaled",
+        "operation": "ratio",
+        "numerator": "Zr",
+        "denominator": "TiO2",
+        "numerator_unit": "ppm",
+        "denominator_unit": "wt%",
+        "scale": 0.0001,
+        "output_unit": "scaled ratio",
+        "formula": "(Zr/TiO2) * 0.0001",
+    }
+    document["axes"]["x"]["variable"] = "zr_tio2_scaled"
+    model = validate_classification_model(document)
+    frame = pd.DataFrame(
+        {
+            "Zr_ppm": [100.0, 250.0, 100.0],
+            "TiO2_wt%": [1.0, 0.5, 0.0],
+        }
+    )
+
+    values = evaluate_variable(
+        frame,
+        model.variables[0],
+        analyte_columns={"Zr": "Zr_ppm", "TiO2": "TiO2_wt%"},
+        analyte_units={"Zr": "ppm", "TiO2": "wt%"},
+    )
+
+    assert values.iloc[0] == pytest.approx(0.01)
+    assert values.iloc[1] == pytest.approx(0.05)
+    assert pd.isna(values.iloc[2])
 
 
 def test_classification_handles_inside_boundary_outside_invalid_and_overlap() -> None:

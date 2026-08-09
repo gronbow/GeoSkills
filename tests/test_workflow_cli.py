@@ -218,7 +218,7 @@ def test_version_works_without_site_packages() -> None:
     report = parse_stdout(result)
     assert result.returncode == 0
     assert report["status"] == "ready"
-    assert report["result"]["tool_version"] == "0.5.0"
+    assert report["result"]["tool_version"] == "0.6.0-dev"
 
 
 def test_self_check_is_machine_readable_and_private_by_default() -> None:
@@ -406,7 +406,7 @@ def test_spider_recipe_preserves_three_reviewed_oxide_conversions(
     assert not (task_dir / "figure-spider.source_data.csv").exists()
 
 
-def test_major_example_runs_harker_and_tas_as_one_transaction(
+def test_major_example_runs_harker_tas_and_k2o_as_one_transaction(
     tmp_path: Path,
 ) -> None:
     recipe_path = prepare_major_multitask_recipe(tmp_path)
@@ -416,10 +416,13 @@ def test_major_example_runs_harker_and_tas_as_one_transaction(
     executed = execute_plan(recipe_path, plan_path)
 
     assert planned["status"] == "ready"
-    assert executed["status"] == "ready"
-    assert executed["task_count"] == 2
+    assert executed["status"] == "review"
+    assert executed["task_count"] == 3
     assert (tmp_path / "bundle" / "harker-main" / "figure-harker.pdf").is_file()
     assert (tmp_path / "bundle" / "tas-main" / "figure-tas.pdf").is_file()
+    assert (
+        tmp_path / "bundle" / "k2o-series-main" / "figure-k2o-sio2.pdf"
+    ).is_file()
     run_report = json.loads(
         (tmp_path / "bundle" / "run.report.json").read_text(encoding="utf-8")
     )
@@ -430,7 +433,8 @@ def test_major_example_runs_harker_and_tas_as_one_transaction(
         / "figure-harker.report.json"
     ).read_text(encoding="utf-8")
     assert run_report["qa"]["all_tasks_completed"] is True
-    assert run_report["qa"]["task_count"] == 2
+    assert run_report["qa"]["task_count"] == 3
+    assert run_report["status"] == "review"
     assert '"data_min"' not in harker_report_text
     assert '"data_max"' not in harker_report_text
     assert "48.4986" not in harker_report_text

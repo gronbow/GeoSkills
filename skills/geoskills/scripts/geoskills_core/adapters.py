@@ -17,6 +17,7 @@ from .analytes import (
     normalize_unit,
 )
 from .errors import GeoSkillsError
+from .basis import apply_data_basis
 from .derived import apply_derived_variables
 from .io import adapt_transposed_table, read_table, validate_input_file
 from .quality import assess_data_quality
@@ -34,12 +35,14 @@ class PreparedInput:
     """One temporary canonical table and its share-safe provenance."""
 
     path: Path
+    basis_path: Path | None
     source: dict[str, Any]
     sample_column: str
     group_column: str | None
     mappings: tuple[ColumnMapping, ...]
     quality: dict[str, Any]
     derived: dict[str, Any]
+    basis: dict[str, Any]
 
 
 def _unit_for(
@@ -247,6 +250,12 @@ def prepare_mapped_input(
             analyte_columns=analyte_columns,
             analyte_units=analyte_units,
         )
+        basis_frame, basis = apply_data_basis(
+            canonical,
+            specification=recipe.get("data_basis"),
+            analyte_columns=analyte_columns,
+            analyte_units=analyte_units,
+        )
     except (KeyError, ValueError) as exc:
         raise AdapterError(
             "数据质控或派生变量处理无法按已验证配方安全完成。",
@@ -255,6 +264,10 @@ def prepare_mapped_input(
 
     mapped_path = work_dir / "mapped_input.csv"
     canonical.to_csv(mapped_path, index=False)
+    basis_path: Path | None = None
+    if basis.get("configured") is True:
+        basis_path = work_dir / "basis_input.csv"
+        basis_frame.to_csv(basis_path, index=False)
     safe_source = {
         key: value
         for key, value in source.items()
@@ -272,12 +285,14 @@ def prepare_mapped_input(
     safe_source["column_count"] = mapped_column_count
     return PreparedInput(
         path=mapped_path,
+        basis_path=basis_path,
         source=safe_source,
         sample_column="Sample",
         group_column="Group" if group_source is not None else None,
         mappings=mappings,
         quality=quality,
         derived=derived,
+        basis=basis,
     )
 
 
@@ -297,6 +312,30 @@ def _safe_issues(report: Mapping[str, Any]) -> list[dict[str, str]]:
     return results
 
 
+def _basis_aware_path(
+    task: Mapping[str, Any],
+    prepared: PreparedInput,
+) -> Path:
+    """Select a transformed table only when the reviewed task requires it."""
+
+    diagram = str(task["diagram"])
+    basis = str(task.get("parameters", {}).get("composition_basis", ""))
+    if diagram == "k2o-sio2":
+        if prepared.basis_path is None:
+            raise AdapterError(
+                "K2O-SiO2 图缺少已审核的无水基准表。",
+                code="E420",
+            )
+        return prepared.basis_path
+    if (
+        diagram == "tas"
+        and basis == "anhydrous-normalized"
+        and prepared.basis_path is not None
+    ):
+        return prepared.basis_path
+    return prepared.path
+
+
 def inspect_task(
     task: Mapping[str, Any],
     prepared: PreparedInput,
@@ -308,12 +347,12 @@ def inspect_task(
     selected_groups = parameters.get("groups", "all")
     missing_groups: list[str] = []
     selected_frame: pd.DataFrame | None = None
-    inspection_path = prepared.path
+    inspection_path = _basis_aware_path(task, prepared)
     if selected_groups != "all":
         if prepared.group_column is None:
             missing_groups = [str(item) for item in selected_groups]
         else:
-            canonical_frame = pd.read_csv(prepared.path)
+            canonical_frame = pd.read_csv(inspection_path)
             group_text = (
                 canonical_frame[prepared.group_column]
                 .astype("string")
@@ -336,8 +375,8 @@ def inspect_task(
                 ].copy()
                 if diagram in {"ree", "spider"}:
                     inspection_path = _task_input_path(task, prepared)
-    elif diagram in {"ree", "spider", "harker", "tas"}:
-        selected_frame = pd.read_csv(prepared.path)
+    elif diagram in {"ree", "spider", "harker", "tas", "k2o-sio2"}:
+        selected_frame = pd.read_csv(inspection_path)
 
     if diagram == "ree":
         from inspect_data import inspect_path
@@ -363,11 +402,11 @@ def inspect_task(
             item["element"]
             for item in report.get("trace_elements", {}).get("recognized", [])
         ]
-    elif diagram in {"harker", "tas"}:
+    elif diagram in {"harker", "tas", "k2o-sio2"}:
         from inspect_major_data import inspect_major_path
 
         report = inspect_major_path(
-            prepared.path,
+            inspection_path,
             requested_sample_column=prepared.sample_column,
             requested_group_column=prepared.group_column,
         )
@@ -393,6 +432,8 @@ def inspect_task(
         ]
     elif diagram == "tas":
         requested = ["SiO2", "Na2O", "K2O"]
+    elif diagram == "k2o-sio2":
+        requested = ["SiO2", "K2O"]
     missing = sorted(
         {value for value in requested if value and value not in set(recognized)}
     )
@@ -547,6 +588,44 @@ def inspect_task(
                     "suggested_action": "检查分组筛选以及 SiO2、Na2O、K2O 数据。",
                 }
             )
+    k2o_blocked = False
+    if (
+        diagram == "k2o-sio2"
+        and not missing
+        and not missing_groups
+        and selected_frame is not None
+    ):
+        canonical_columns = {
+            mapping.canonical_analyte: (
+                f"{mapping.canonical_analyte}_{mapping.unit}"
+            )
+            for mapping in prepared.mappings
+        }
+        silica = pd.to_numeric(
+            selected_frame[canonical_columns["SiO2"]], errors="coerce"
+        )
+        potassium = pd.to_numeric(
+            selected_frame[canonical_columns["K2O"]], errors="coerce"
+        )
+        finite = (
+            silica.notna()
+            & potassium.notna()
+            & np.isfinite(silica)
+            & np.isfinite(potassium)
+            & silica.ge(0)
+            & potassium.ge(0)
+        )
+        if int(finite.sum()) == 0:
+            k2o_blocked = True
+            issues.append(
+                {
+                    "code": "E421",
+                    "severity": "review",
+                    "message": "所选样品没有可用于 K2O-SiO2 图的完整非负坐标。",
+                    "field": "tasks.parameters.groups",
+                    "suggested_action": "检查分组筛选、数据基准以及 SiO2 和 K2O 数据。",
+                }
+            )
     status = str(report.get("status", "blocked"))
     if (
         missing
@@ -554,6 +633,7 @@ def inspect_task(
         or pattern_blocked
         or harker_blocked
         or tas_blocked
+        or k2o_blocked
         or status != "ready"
     ):
         status = "blocked"
@@ -578,19 +658,20 @@ def _task_input_path(
     task: Mapping[str, Any],
     prepared: PreparedInput,
 ) -> Path:
-    """Create a private per-task subset for REE/spider group selection."""
+    """Create a private per-task view with reviewed basis and group selection."""
 
+    base_path = _basis_aware_path(task, prepared)
     if str(task["diagram"]) not in {"ree", "spider"}:
-        return prepared.path
+        return base_path
     selected = task.get("parameters", {}).get("groups", "all")
     if selected == "all":
-        return prepared.path
+        return base_path
     if prepared.group_column is None:
         raise AdapterError(
             "按组筛选前必须明确分组列。",
             code="E413",
         )
-    frame = pd.read_csv(prepared.path)
+    frame = pd.read_csv(base_path)
     group_text = frame[prepared.group_column].astype("string").str.strip()
     requested = {str(item) for item in selected}
     subset = frame.loc[group_text.isin(requested)].copy()
@@ -685,6 +766,19 @@ def run_task(
 
         confirmations = task.get("confirmations", {})
         return plot_tas_path(
+            **common,
+            requested_groups=_comma_list(parameters.get("groups", "all")),
+            confirm_volcanic=bool(confirmations.get("volcanic_samples")),
+            composition_basis=str(parameters["composition_basis"]),
+            width_mm=float(style["width_mm"]),
+            height_mm=float(style["height_mm"]),
+            legend_layout=str(style.get("legend_layout", "inside-auto")),
+        )
+    if diagram == "k2o-sio2":
+        from plot_k2o_sio2 import plot_k2o_sio2_path
+
+        confirmations = task.get("confirmations", {})
+        return plot_k2o_sio2_path(
             **common,
             requested_groups=_comma_list(parameters.get("groups", "all")),
             confirm_volcanic=bool(confirmations.get("volcanic_samples")),

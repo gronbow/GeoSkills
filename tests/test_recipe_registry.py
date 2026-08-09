@@ -120,9 +120,9 @@ def issue_codes(result: dict) -> set[str]:
 
 
 def test_version_and_registry_are_fixed_and_json_ready() -> None:
-    assert VERSION == "0.5.0"
-    assert diagram_ids() == ("ree", "spider", "harker", "tas")
-    assert set(DIAGRAMS) == {"ree", "spider", "harker", "tas"}
+    assert VERSION == "0.6.0-dev"
+    assert diagram_ids() == ("ree", "spider", "harker", "tas", "k2o-sio2")
+    assert set(DIAGRAMS) == {"ree", "spider", "harker", "tas", "k2o-sio2"}
     assert BUILTIN_STYLE_PRESETS == (
         "publication-double-column",
         "review-preview",
@@ -152,6 +152,9 @@ def test_version_and_registry_are_fixed_and_json_ready() -> None:
     assert get_diagram("tas").required_confirmations == (
         "volcanic_samples",
         "composition_basis_reviewed",
+    )
+    assert get_diagram("k2o-sio2").required_assets == (
+        "assets/classification/k2o-sio2-pt76-r89-original.json",
     )
     with pytest.raises(RegistryError):
         get_diagram("sr-nd")
@@ -213,6 +216,7 @@ def test_valid_recipe_normalizes_to_json_ready_structure() -> None:
         "major_oxide_total": None,
     }
     assert result["recipe"]["derived_variables"] == []
+    assert result["recipe"]["data_basis"] is None
     json.dumps(result, ensure_ascii=False, allow_nan=False)
 
 
@@ -254,6 +258,76 @@ def test_quality_and_same_unit_ratio_are_normalized() -> None:
         }
     ]
     assert result["recipe"]["confirmations"]["data_quality_reviewed"] is True
+
+
+def test_k2o_sio2_requires_explicit_anhydrous_basis_and_confirmations() -> None:
+    recipe = valid_recipe()
+    recipe["data_basis"] = {
+        "operation": "normalize-to-100",
+        "basis": "anhydrous-100",
+        "analytes": ["SiO2", "Na2O", "K2O", "MgO"],
+    }
+    recipe["confirmations"]["data_basis_reviewed"] = True
+    recipe["tasks"] = [
+        {
+            "id": "k2o-main",
+            "diagram": "k2o-sio2",
+            "stem": "figure-k2o",
+            "preset": "journal-main",
+            "parameters": {
+                "composition_basis": "anhydrous-normalized",
+                "groups": "all",
+            },
+            "confirmations": {
+                "volcanic_samples": True,
+                "composition_basis_reviewed": True,
+            },
+        }
+    ]
+
+    result = validate_recipe(recipe)
+
+    assert result["status"] == "ready"
+    assert result["recipe"]["data_basis"]["analytes"] == [
+        "SiO2",
+        "Na2O",
+        "K2O",
+        "MgO",
+    ]
+
+    missing_confirmation = valid_recipe()
+    missing_confirmation["data_basis"] = dict(recipe["data_basis"])
+    invalid = validate_recipe(missing_confirmation)
+    assert invalid["status"] == "invalid"
+    assert "E305" in issue_codes(invalid)
+
+    missing_basis = valid_recipe()
+    missing_basis["tasks"] = recipe["tasks"]
+    invalid = validate_recipe(missing_basis)
+    assert invalid["status"] == "invalid"
+    assert "E316" in issue_codes(invalid)
+
+
+def test_data_basis_rejects_volatile_totals_and_double_counted_iron() -> None:
+    recipe = valid_recipe()
+    recipe["columns"]["mapping"].update(
+        {
+            "LOI": "LOI_wt%",
+            "FeOT": "FeOT_wt%",
+            "Fe2O3": "Fe2O3_wt%",
+        }
+    )
+    recipe["data_basis"] = {
+        "operation": "normalize-to-100",
+        "basis": "anhydrous-100",
+        "analytes": ["SiO2", "K2O", "LOI", "FeOT", "Fe2O3"],
+    }
+    recipe["confirmations"]["data_basis_reviewed"] = True
+
+    result = validate_recipe(recipe)
+
+    assert result["status"] == "invalid"
+    assert "E316" in issue_codes(result)
 
 
 @pytest.mark.parametrize(

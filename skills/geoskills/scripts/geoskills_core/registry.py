@@ -1,9 +1,9 @@
-"""Static diagram registry for the GeoSkills v0.4 workflow.
+"""Static diagram registry for the GeoSkills unified workflow.
 
-The registry deliberately contains only the four scientifically reviewed
-v0.3 diagram families.  Handler modules are imported only when a caller asks
-to resolve a handler, so listing capabilities remains lightweight and cannot
-trigger plotting side effects.
+Handler modules are imported only when a caller asks to resolve a handler, so
+listing capabilities remains lightweight and cannot trigger plotting side
+effects.  Every post-v0.3 diagram must pass its own scientific review before
+registration.
 """
 
 from __future__ import annotations
@@ -165,6 +165,8 @@ def _spec(
     scientific_schema: Mapping[str, Any],
     confirmations: tuple[str, ...] = (),
     assets: tuple[str, ...] = (),
+    adapter: str = "legacy-v0.3-function",
+    adapter_version: str = "0.3.0",
 ) -> DiagramSpec:
     return DiagramSpec(
         id=diagram_id,
@@ -173,7 +175,7 @@ def _spec(
         display_name_en=display_name_en,
         operation=operation,
         input_profile=input_profile,
-        adapter="legacy-v0.3-function",
+        adapter=adapter,
         inspector_handler=HandlerRef(*inspector),
         runner_handler=HandlerRef(*runner),
         scientific_parameter_schema=_freeze(scientific_schema),
@@ -182,7 +184,7 @@ def _spec(
         required_assets=assets,
         output_contract=_OUTPUT_CONTRACT,
         privacy_contract=_PRIVACY_CONTRACT,
-        adapter_version="0.3.0",
+        adapter_version=adapter_version,
     )
 
 
@@ -268,6 +270,31 @@ _DIAGRAMS = {
             "composition_basis_reviewed",
         ),
         assets=("assets/classification/tas-lemaitre-2002.json",),
+    ),
+    "k2o-sio2": _spec(
+        diagram_id="k2o-sio2",
+        display_name_zh="K2O-SiO2 岩浆系列图",
+        display_name_en="K2O-SiO2 magma-series diagram",
+        operation="k2o_sio2_series_plot",
+        input_profile="anhydrous-major-oxides-wt-percent",
+        inspector=("inspect_major_data", "inspect_major_path"),
+        runner=("plot_k2o_sio2", "plot_k2o_sio2_path"),
+        scientific_schema={
+            "required": ("composition_basis",),
+            "allowed": ("composition_basis", "groups"),
+            "composition_basis": {"enum": ("anhydrous-normalized",)},
+            "groups": {"type": "all-or-array"},
+            "additional_properties": False,
+        },
+        confirmations=(
+            "volcanic_samples",
+            "composition_basis_reviewed",
+        ),
+        assets=(
+            "assets/classification/k2o-sio2-pt76-r89-original.json",
+        ),
+        adapter="classification-model-v1",
+        adapter_version="0.6.0",
     ),
 }
 

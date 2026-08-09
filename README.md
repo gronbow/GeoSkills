@@ -2,7 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本为 [v0.5.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.5.0)。它在 v0.4 统一工作流上增加数据质控、同单位派生比值和通用分类模型底座；仍只注册 REE、蛛网图、Harker 和 TAS 四类正式图解。
+当前正式版本为 [v0.5.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.5.0)。本分支正在开发 v0.6.0 候选版：加入显式无水100%组成基准和经专业复核、未外推的 K2O-SiO2 岩浆系列图；正式发布前仍需本地候选版审核。
 
 ## 当前可以做什么
 
@@ -12,13 +12,15 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 检查样品编号、ppm 单位、缺失值、低于检出限、非数字、零和负数；
 - 在可分享计划和报告中用计数汇总空白/重复编号、缺失、检出限、非数字、无穷和非正值，不暴露问题样品或具体测值；
 - 按用户明确给出的氧化物列表、范围和数据基础执行可选主量总量检查；
+- 在不覆盖原始列的内部副本中，按用户明确确认的氧化物列表换算无水100%组成基准；
 - 计算 `Nb/Y`、`K2O/Na2O` 等同单位固定比值，不执行任意公式或静默混合单位；
 - 使用 Sun & McDonough（1989）C1 球粒陨石值标准化 La–Lu；
 - 使用 Sun & McDonough（1989）原始地幔、脚注明确修改的原始地幔或 N-MORB 值生成微量元素蛛网图；
 - 对明确标为 wt% 的 `K2O`、`P2O5`、`TiO2` 作可追溯的元素 ppm 换算；
 - 以 SiO2 或用户指定变量为横轴，一次生成一幅或多幅 Harker 变化图；
 - 使用 SiO2 与 Na2O + K2O 绘制火山岩 TAS 图，并输出逐样品分类与边界复核状态；
-- 生成投稿尺寸的 REE、蛛网图、Harker 或 TAS 图件，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
+- 使用 Rickwood（1989）核对并更正的 Peccerillo–Taylor（1976）原始边界绘制 K2O-SiO2 图，边界不外推；
+- 生成投稿尺寸的 REE、蛛网图、Harker、TAS 或 K2O-SiO2 图件，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
 - 用一个 YAML 配方明确记录数据文件、列映射、单位、科学参数和人工确认项；
 - 在出图前生成不含源数据值的计划，数据或参考文件变化后旧计划自动失效；
 - 用一个配方从同一数据表运行一个或多个图件任务，所有任务成功后才提交完整输出；
@@ -60,7 +62,7 @@ python -m venv .venv
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
-## v0.5 统一工作流
+## v0.6 候选版统一工作流
 
 可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
 
@@ -80,12 +82,12 @@ python -m venv .venv
 |---|---|
 | `geoskills_ree_workflow.yaml` | REE 配分图 |
 | `geoskills_spider_workflow.yaml` | 微量元素蛛网图 |
-| `geoskills_major_workflow.yaml` | 同时生成 Harker 和 TAS |
+| `geoskills_major_workflow.yaml` | 同时生成 Harker、TAS 和 K2O-SiO2 |
 
-例如，先为主量元素双任务配方生成计划：
+例如，先为主量元素三任务配方生成计划：
 
 ```powershell
-.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py plan skills\geoskills\examples\geoskills_major_workflow.yaml --output outputs\major-plan.json
+.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py plan skills\geoskills\examples\geoskills_major_workflow.yaml --out outputs\major-plan.json
 ```
 
 此命令不会生成图件。终端只显示状态、计划编号、计划文件名和问题摘要；完整的任务、列映射、单位、参考文件、图件尺寸和输出模式保存在 `outputs\major-plan.json`。请让 Codex 打开并概括该文件，或用文本编辑器查看。状态为 `ready` 且内容经人工核对后，再运行：
@@ -102,7 +104,7 @@ python -m venv .venv
 
 示例配方中的确认项只适用于仓库内已审核的合成数据。把配方复制给自己的数据后，应先把确认项改为 `false`，实际核对完成后再逐项确认。
 
-配方字段、质控/派生比值、四类任务示例、返回状态和常见错误见 [配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md) 和 [数据质控与派生比值](skills/geoskills/references/data-quality-and-derived-variables.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
+配方字段、质控/组成基准/派生比值、五类任务示例、返回状态和常见错误见 [配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md)、[数据质控、组成基准与派生比值](skills/geoskills/references/data-quality-and-derived-variables.md) 和 [K2O-SiO2 科学合同](skills/geoskills/references/k2o-sio2-method.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
 
 ## v0.3 单脚本兼容命令
 
@@ -195,19 +197,21 @@ GeoSkills/
 - Harker 图只展示变量间的协变关系；默认不添加拟合线，也不从相关性单独推断岩浆过程。
 - TAS 边界使用带文献与版本信息的本地资产。恰好位于边界上的样品标为 `review_required`，不会静默选择一侧。
 - TAS 仅用于明确确认的火山岩；`as-reported` 结果标为初步分类，不能替代无水归一化后的专业判断，并且必须由用户明确设置 `provisional_classification_accepted: true`。
+- K2O-SiO2 只接受明确的无水100%基准和火山岩适用性确认；边界不外推，完整四分区范围为 SiO2 48–63 wt%，范围外样品不强制分类。
 - 图形可以展示富集程度、斜率和平行性，但不能单独证明岩浆源区、部分熔融、分离结晶或构造环境。
 - 统一计划和可分享报告默认不含绝对路径、样品编号或源数据值。
 - 配方、数据、工具版本或内置参考文件发生变化时，必须重新生成计划。
 - 主量总量阈值和 `composition_basis` 必须由用户或专业人员明确给出；程序不会自行发明通用合格范围。
 - 普通派生比值只接受相同已声明单位，逐样品结果不会进入可分享报告。
-- v0.5 通用分类底座只接受带文献来源、审核状态和可固定哈希的严格本地模型；在边界资产专业复核和单独注册前，不宣称支持新分类图。
+- 通用分类底座只接受带文献来源、审核状态和可固定哈希的严格本地模型；除已审核的 K2O-SiO2 资产外，不宣称支持其他未经复核的分类图。
+- Zr/TiO2-Nb/Y 在 v0.6 只验证坐标计算能力，没有注册边界或分类图；取得可靠原始数值边界并再次专业复核前不会开放。
 - 多任务结果以完整目录为单位提交；中途失败不会留下半套新输出，也不会破坏原有完整目录。
 - 覆盖运行只替换带有效 GeoSkills 运行报告的旧结果目录；普通同名文件夹会被保护。
 - `local_data/` 和 `outputs/` 已排除在 Git 之外；不要提交私人或未发表数据。
 
 ## 当前状态
 
-GeoSkills v0.5.0 已完成数据质控、同单位派生比值和通用分类模型底座，并保留 v0.4 的四类正式图解与安全工作流。该版本通过 217 项自动测试、Ubuntu/Windows 的 Python 3.11/3.12 CI、合成与已发表数据回归，以及可分享文件隐私扫描。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.6.0-dev 候选版正在本地开发和审核。当前已加入无水100%组成基准、K2O-SiO2 正式图解，以及未注册的 Zr/TiO2-Nb/Y 坐标计算测试底座；自动测试数量和最终验收结论将在完整回归后更新。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
