@@ -15,7 +15,7 @@ from .analytes import (
     REE_ORDER,
     SPIDER_ELEMENT_ORDER,
 )
-from .registry import BUILTIN_STYLE_PRESETS, DIAGRAMS
+from .registry import BUILTIN_STYLE_PRESETS, DIAGRAMS, get_diagram
 
 
 RECIPE_SCHEMA_VERSION = "geoskills.recipe/v1"
@@ -31,12 +31,14 @@ _ROOT_FIELDS = {
     "confirmations",
     "quality",
     "derived_variables",
+    "data_basis",
     "tasks",
 }
 _REQUIRED_ROOT_FIELDS = _ROOT_FIELDS - {
     "presets",
     "quality",
     "derived_variables",
+    "data_basis",
 }
 _INPUT_FIELDS = {"file", "sheet", "layout"}
 _COLUMN_FIELDS = {"sample_id", "group", "mapping", "units"}
@@ -57,10 +59,9 @@ _TOP_CONFIRMATIONS = (
     "units_reviewed",
     "plotted_data_export_reviewed",
 )
-_OPTIONAL_TOP_CONFIRMATIONS = ("data_quality_reviewed",)
-_TAS_CONFIRMATIONS = (
-    "volcanic_samples",
-    "composition_basis_reviewed",
+_OPTIONAL_TOP_CONFIRMATIONS = (
+    "data_quality_reviewed",
+    "data_basis_reviewed",
 )
 _PROTECTED_OUTPUT_SEGMENTS = frozenset(
     {".git", ".codex", "skills", "tests"}
@@ -93,12 +94,14 @@ _PARAMETER_FIELDS = {
     "spider": frozenset({"reference", "elements", "groups"}),
     "harker": frozenset({"x", "y", "groups"}),
     "tas": frozenset({"composition_basis", "groups"}),
+    "k2o-sio2": frozenset({"composition_basis", "groups"}),
 }
 _PARAMETER_REQUIRED = {
     "ree": frozenset({"reference", "elements"}),
     "spider": frozenset({"reference", "elements"}),
     "harker": frozenset({"x", "y"}),
     "tas": frozenset({"composition_basis"}),
+    "k2o-sio2": frozenset({"composition_basis"}),
 }
 _LAYOUTS = frozenset(
     {"row-per-sample", "analyte-per-row", "auto"}
@@ -118,6 +121,13 @@ _MAJOR_TOTAL_FIELDS = frozenset(
 )
 _DERIVED_FIELDS = frozenset(
     {"id", "operation", "numerator", "denominator", "input_unit"}
+)
+_DATA_BASIS_FIELDS = frozenset({"operation", "basis", "analytes"})
+_DATA_BASIS_OPERATIONS = frozenset(
+    {"normalize-to-100", "use-as-declared"}
+)
+_DATA_BASIS_EXCLUDED = frozenset(
+    {"H2O", "H2O+", "H2O-", "CO2", "LOI", "Total"}
 )
 _DUPLICATE_POLICIES = frozenset({"error"})
 _INVALID_VALUE_POLICIES = frozenset({"warning", "review", "error"})
@@ -746,6 +756,131 @@ def _validate_quality(
     return normalized
 
 
+def _validate_data_basis(
+    raw: Any,
+    columns: Mapping[str, Any],
+    mapped: set[str],
+    issues: list[dict[str, str]],
+) -> dict[str, Any] | None:
+    """Validate one explicit, non-destructive anhydrous-basis declaration."""
+
+    if raw is None:
+        return None
+    value = _mapping(raw, "data_basis", issues)
+    _unknown_fields(value, _DATA_BASIS_FIELDS, "data_basis", issues)
+    _missing_fields(value, _DATA_BASIS_FIELDS, "data_basis", issues)
+    normalized: dict[str, Any] = {}
+
+    operation = value.get("operation")
+    if operation not in _DATA_BASIS_OPERATIONS:
+        issues.append(
+            _issue(
+                "E316",
+                "error",
+                "data_basis.operation 必须是 normalize-to-100 或 use-as-declared。",
+                field="data_basis.operation",
+            )
+        )
+    else:
+        normalized["operation"] = operation
+
+    basis = value.get("basis")
+    if basis != "anhydrous-100":
+        issues.append(
+            _issue(
+                "E316",
+                "error",
+                "data_basis.basis 当前必须明确为 anhydrous-100。",
+                field="data_basis.basis",
+            )
+        )
+    else:
+        normalized["basis"] = basis
+
+    raw_analytes = value.get("analytes")
+    if not isinstance(raw_analytes, list) or len(raw_analytes) < 2:
+        issues.append(
+            _issue(
+                "E316",
+                "error",
+                "data_basis.analytes 必须是至少两个主量氧化物组成的列表。",
+                field="data_basis.analytes",
+            )
+        )
+        normalized["analytes"] = []
+        return normalized
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw_analytes):
+        field = f"data_basis.analytes[{index}]"
+        if not isinstance(item, str):
+            issues.append(
+                _issue("E316", "error", "氧化物名称必须是文本。", field=field)
+            )
+            continue
+        definition = DEFAULT_ANALYTE_REGISTRY.get(item)
+        if definition is None or definition.kind != "major_oxide":
+            issues.append(
+                _issue(
+                    "E316",
+                    "error",
+                    "无水基准列表只能使用标准主量氧化物名称。",
+                    field=field,
+                )
+            )
+            continue
+        if item in _DATA_BASIS_EXCLUDED:
+            issues.append(
+                _issue(
+                    "E316",
+                    "error",
+                    "H2O、CO2、LOI 和 Total 不能进入无水100%归一化分母。",
+                    field=field,
+                )
+            )
+            continue
+        if item in seen:
+            issues.append(
+                _issue("E308", "error", "无水基准氧化物不能重复。", field=field)
+            )
+            continue
+        seen.add(item)
+        selected.append(item)
+        if item not in mapped:
+            issues.append(
+                _issue(
+                    "E313",
+                    "error",
+                    f"{item} 未在 columns.mapping 中映射到来源列。",
+                    field=field,
+                )
+            )
+        elif _declared_unit(item, columns) != "wt%":
+            issues.append(
+                _issue(
+                    "E313",
+                    "error",
+                    f"{item} 必须明确使用 wt%。",
+                    field=field,
+                )
+            )
+
+    iron = set(selected).intersection({"FeOT", "Fe2O3T", "FeO", "Fe2O3"})
+    totals = iron.intersection({"FeOT", "Fe2O3T"})
+    if len(totals) > 1 or (totals and len(iron) > 1):
+        issues.append(
+            _issue(
+                "E316",
+                "error",
+                "总铁列不能与另一总铁列、FeO 或 Fe2O3 同时进入归一化分母。",
+                field="data_basis.analytes",
+            )
+        )
+    normalized["analytes"] = selected
+    return normalized
+
+
 def _validate_derived_variables(
     raw: Any,
     columns: Mapping[str, Any],
@@ -1274,7 +1409,7 @@ def _validate_parameters(
                 )
             )
         normalized["y"] = normalized_y
-    else:
+    elif diagram == "tas":
         basis = value.get("composition_basis")
         if (
             not isinstance(basis, str)
@@ -1298,6 +1433,31 @@ def _validate_parameters(
                         "E313",
                         "error",
                         f"TAS 需要在 columns.mapping 中映射 {required_analyte}。",
+                        field="columns.mapping",
+                        task_id=task_id,
+                    )
+                )
+    elif diagram == "k2o-sio2":
+        basis = value.get("composition_basis")
+        if basis != "anhydrous-normalized":
+            issues.append(
+                _issue(
+                    "E311",
+                    "error",
+                    "K2O-SiO2 图当前只接受明确的 anhydrous-normalized 基准。",
+                    field=f"{field}.composition_basis",
+                    task_id=task_id,
+                )
+            )
+        else:
+            normalized["composition_basis"] = basis
+        for required_analyte in ("SiO2", "K2O"):
+            if required_analyte not in mapped:
+                issues.append(
+                    _issue(
+                        "E313",
+                        "error",
+                        f"K2O-SiO2 图需要在 columns.mapping 中映射 {required_analyte}。",
                         field="columns.mapping",
                         task_id=task_id,
                     )
@@ -1390,7 +1550,7 @@ def _validate_tasks(
                 _issue(
                     "E310",
                     "error",
-                    "diagram 只能是 ree、spider、harker 或 tas。",
+                    "diagram 必须是 GeoSkills 固定注册表中的已审核图解。",
                     field=f"{field}.diagram",
                     task_id=task_label,
                 )
@@ -1423,7 +1583,7 @@ def _validate_tasks(
                 has_group_column,
                 issues,
             )
-            required = _TAS_CONFIRMATIONS if diagram == "tas" else ()
+            required = tuple(get_diagram(diagram).required_confirmations)
             optional = (
                 ("provisional_classification_accepted",)
                 if diagram == "tas"
@@ -1510,6 +1670,9 @@ def validate_recipe(document: Any) -> dict[str, Any]:
     normalized_derived = _validate_derived_variables(
         root.get("derived_variables"), normalized_columns, mapped, issues
     )
+    normalized_data_basis = _validate_data_basis(
+        root.get("data_basis"), normalized_columns, mapped, issues
+    )
     normalized_output = _validate_output(root.get("output"), issues)
     normalized_presets, preset_names = _validate_presets(
         root.get("presets"), issues
@@ -1521,6 +1684,18 @@ def validate_recipe(document: Any) -> dict[str, Any]:
         issues,
         optional=_OPTIONAL_TOP_CONFIRMATIONS,
     )
+    if (
+        normalized_data_basis is not None
+        and "data_basis_reviewed" not in normalized_confirmations
+    ):
+        issues.append(
+            _issue(
+                "E305",
+                "error",
+                "使用 data_basis 前必须明确提供 data_basis_reviewed 确认项。",
+                field="confirmations.data_basis_reviewed",
+            )
+        )
     normalized_tasks = _validate_tasks(
         root.get("tasks"),
         mapped,
@@ -1528,12 +1703,31 @@ def validate_recipe(document: Any) -> dict[str, Any]:
         preset_names,
         issues,
     )
+    for task in normalized_tasks:
+        if task.get("diagram") != "k2o-sio2":
+            continue
+        selected = set(
+            ()
+            if normalized_data_basis is None
+            else normalized_data_basis.get("analytes", ())
+        )
+        if normalized_data_basis is None or not {"SiO2", "K2O"}.issubset(selected):
+            issues.append(
+                _issue(
+                    "E316",
+                    "error",
+                    "K2O-SiO2 图需要 data_basis，并且归一化列表必须包含 SiO2 和 K2O。",
+                    field="data_basis.analytes",
+                    task_id=str(task.get("id") or "k2o-sio2"),
+                )
+            )
     recipe = {
         "schema_version": RECIPE_SCHEMA_VERSION,
         "input": normalized_input,
         "columns": normalized_columns,
         "quality": normalized_quality,
         "derived_variables": normalized_derived,
+        "data_basis": normalized_data_basis,
         "output": normalized_output,
         "presets": normalized_presets,
         "confirmations": normalized_confirmations,

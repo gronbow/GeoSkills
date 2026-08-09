@@ -1,9 +1,9 @@
 ---
 name: geoskills
-description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, and guarded volcanic TAS classification; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
+description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, explicit anhydrous 100% normalization, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, guarded volcanic TAS classification, and the reviewed non-extrapolated K2O-SiO2 magma-series diagram; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
 ---
 
-# GeoSkills v0.5 workflow
+# GeoSkills v0.6 workflow
 
 Use deterministic local Python for all table reading, normalization, classification, plotting, and export. The language model may guide choices and explain results, but must not calculate normalized ratios, convert oxides, or classify TAS fields manually.
 
@@ -13,7 +13,7 @@ Prefer the unified `scripts/geoskills.py` workflow:
 
 1. Run `self-check`.
 2. Inspect the user's table locally.
-3. Draft a versioned YAML recipe with explicit input layout, column mappings, units, optional QA policy, optional same-unit ratios, output profile, tasks, and confirmations.
+3. Draft a versioned YAML recipe with explicit input layout, column mappings, units, optional QA policy, optional same-unit ratios, optional composition-basis transformation, output profile, tasks, and confirmations.
 4. Keep every unverified confirmation as `false`. Never mark a scientific or data confirmation `true` merely to make the workflow continue.
 5. Run `plan`. This checks the recipe, input, count-only QA summary, derived-variable summary, selected analytes, scientific assets, and expected outputs without creating figures.
 6. Explain any `blocked` or `needs_confirmation` issue in plain language. Revise only after the user supplies the missing information.
@@ -30,10 +30,11 @@ Read [references/data-quality-and-derived-variables.md](references/data-quality-
 - `spider`: multi-element patterns normalized to `pm-sm89`, `pm-sm89-modified`, or `nmorb-sm89`.
 - `harker`: one validated X analyte against one or more validated Y analytes.
 - `tas`: volcanic-rock classification using SiO2 and Na2O + K2O.
+- `k2o-sio2`: non-extrapolated volcanic magma-series classification using anhydrous-normalized SiO2 and K2O.
 
 Stop if the requested diagram is outside this fixed registry. Do not imply support for isotope, tectonic-discrimination, or other diagram families.
 
-The generic classification-model code is a development foundation, not a fifth registered diagram. Read [references/classification-model-contract.md](references/classification-model-contract.md) before adding or reviewing any future classification asset.
+The generic classification-model code now supports the reviewed K2O-SiO2 asset. It remains only a development foundation for every other unregistered diagram. Read [references/classification-model-contract.md](references/classification-model-contract.md) before adding or reviewing another classification asset.
 
 ## Scientific confirmation gates
 
@@ -44,14 +45,17 @@ Require the user or a qualified reviewer to confirm:
 - canonical-to-source column mappings;
 - wt% for major oxides and ppm for direct elemental concentrations;
 - whether plotted source data may be retained;
+- the exact oxide list and action for any anhydrous 100% data-basis transformation;
 - any user-selected main-oxide total range, composition basis, and QA review state;
 - for TAS, that the samples are volcanic and whether the basis is `anhydrous-normalized` or `as-reported`.
+- for K2O-SiO2, that the samples are volcanic and the plotted values are on the reviewed anhydrous 100% basis.
 
 Never infer TAS applicability from sample names or values. Do not apply volcanic TAS fields to plutonic rocks, carbonatites, kimberlites, lamproites, or strongly altered compositions. Treat `as-reported` TAS results as provisional and boundary cases as requiring review.
 
 ## Data and value safeguards
 
 - Preserve blanks and below-detection-limit states as missing. Never replace them with zero or an invented detection limit.
+- Never overwrite source columns during basis conversion. Normalize only a private working copy using the exact user-reviewed oxide list; exclude H2O, CO2, LOI, and Total from the denominator.
 - Keep QA summaries count-only in shareable plans and reports; never expose affected sample IDs, cells, or exact source extrema.
 - Allow public recipe ratios only when numerator and denominator have identical declared units. Never execute formula strings or silently convert mixed units.
 - Reject negative concentrations and duplicate analyte mappings.
@@ -62,6 +66,7 @@ Never infer TAS applicability from sample names or values. Do not apply volcanic
 - Do not select a normalization reference from the apparent curve shape.
 - Keep the printed and footnote-modified primitive-mantle variants separate.
 - Round Harker and logarithmic limits outward without clipping data. Keep TAS at the model's fixed limits.
+- Keep the K2O-SiO2 literature lines at their original lengths. Classify only within the complete four-field SiO2 domain of 48–63 wt%; plot but do not force-classify other visible points.
 
 ## Figure and interpretation safeguards
 
@@ -77,6 +82,7 @@ Read the relevant method file before explaining a scientific result:
 - REE: [references/scientific-method.md](references/scientific-method.md)
 - Spider: [references/spider-method.md](references/spider-method.md)
 - Harker/TAS: [references/major-elements-and-tas.md](references/major-elements-and-tas.md)
+- K2O-SiO2: [references/k2o-sio2-method.md](references/k2o-sio2-method.md)
 
 ## Output and privacy
 

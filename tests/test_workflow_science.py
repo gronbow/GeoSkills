@@ -61,7 +61,9 @@ def _write_recipe(
     report_profile: str = "shareable",
     quality: dict[str, Any] | None = None,
     derived_variables: list[dict[str, Any]] | None = None,
+    data_basis: dict[str, Any] | None = None,
     data_quality_reviewed: bool | None = None,
+    data_basis_reviewed: bool | None = None,
 ) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     frame.to_csv(directory / "input.csv", index=False)
@@ -99,6 +101,11 @@ def _write_recipe(
                 if data_quality_reviewed is not None
                 else {}
             ),
+            **(
+                {"data_basis_reviewed": data_basis_reviewed}
+                if data_basis_reviewed is not None
+                else {}
+            ),
         },
         "tasks": tasks,
     }
@@ -106,6 +113,8 @@ def _write_recipe(
         recipe["quality"] = quality
     if derived_variables is not None:
         recipe["derived_variables"] = derived_variables
+    if data_basis is not None:
+        recipe["data_basis"] = data_basis
     path = directory / "recipe.yaml"
     path.write_text(
         yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
@@ -319,6 +328,85 @@ def test_derived_ratio_is_pinned_in_plan_and_shareable_report(
         == "Nb/Y"
     )
     assert not list((case / "bundle").rglob("*.source_data.csv"))
+
+
+def test_anhydrous_basis_and_k2o_diagram_run_end_to_end(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["PRIVATE-K-01", "PRIVATE-K-02"],
+            "Group": ["Suite A", "Suite B"],
+            "SiO2_wt%": [40.0, 44.0],
+            "Na2O_wt%": [2.4, 2.4],
+            "K2O_wt%": [0.4, 1.92],
+            "MgO_wt%": [37.2, 31.68],
+        }
+    )
+    case = tmp_path / "k2o-basis"
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={
+            "SiO2": "SiO2_wt%",
+            "Na2O": "Na2O_wt%",
+            "K2O": "K2O_wt%",
+            "MgO": "MgO_wt%",
+        },
+        units={"major_oxides": "wt%"},
+        tasks=[
+            _task(
+                "k2o-main",
+                "k2o-sio2",
+                {
+                    "composition_basis": "anhydrous-normalized",
+                    "groups": "all",
+                },
+                confirmations={
+                    "volcanic_samples": True,
+                    "composition_basis_reviewed": True,
+                },
+            )
+        ],
+        report_profile="local-reproducible",
+        data_basis={
+            "operation": "normalize-to-100",
+            "basis": "anhydrous-100",
+            "analytes": ["SiO2", "Na2O", "K2O", "MgO"],
+        },
+        data_basis_reviewed=True,
+    )
+    plan_path = case / "plan.json"
+
+    planned = create_plan(recipe_path, plan_path)
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert planned["status"] == "ready"
+    assert executed["status"] == "ready"
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    basis = plan["data_processing"]["data_basis"]
+    assert basis["definition"]["operation"] == "normalize-to-100"
+    assert basis["summary"]["valid_row_count"] == 2
+    encoded_plan = json.dumps(plan, ensure_ascii=False, allow_nan=False)
+    assert "PRIVATE-K" not in encoded_plan
+
+    task_dir = case / "bundle" / "k2o-main"
+    plotted = pd.read_csv(task_dir / "figure-k2o-main.source_data.csv")
+    assert plotted["SiO2"].tolist() == pytest.approx([50.0, 55.0])
+    assert plotted["K2O"].tolist() == pytest.approx([0.5, 2.4])
+    report = json.loads(
+        (task_dir / "figure-k2o-main.report.json").read_text(encoding="utf-8")
+    )
+    assert report["details"]["data_processing"]["data_basis"][
+        "valid_row_count"
+    ] == 2
+    assert report["details"]["plot_summary"]["complete_domain_x"] == [
+        48.0,
+        63.0,
+    ]
+    assert "PRIVATE-K" not in json.dumps(
+        report, ensure_ascii=False, allow_nan=False
+    )
 
 
 @pytest.mark.parametrize(
@@ -767,7 +855,7 @@ def test_major_example_basis_and_scientific_audit_reports(
     executed = execute_plan(recipe_path, plan_path)
 
     assert planned["status"] == "ready"
-    assert executed["status"] == "ready"
+    assert executed["status"] == "review"
     harker_report = json.loads(
         (
             case
@@ -784,6 +872,14 @@ def test_major_example_basis_and_scientific_audit_reports(
             / "figure-tas.report.json"
         ).read_text(encoding="utf-8")
     )
+    k2o_report = json.loads(
+        (
+            case
+            / "bundle"
+            / "k2o-series-main"
+            / "figure-k2o-sio2.report.json"
+        ).read_text(encoding="utf-8")
+    )
     run_report = json.loads(
         (case / "bundle" / "run.report.json").read_text(encoding="utf-8")
     )
@@ -794,7 +890,12 @@ def test_major_example_basis_and_scientific_audit_reports(
         "volcanic_samples": True,
         "composition_basis_reviewed": True,
     }
-    assert run_report["details"]["data_confirmations"] == TOP_CONFIRMATIONS
+    assert k2o_report["status"] == "review"
+    assert {item["code"] for item in k2o_report["issues"]} == {"W812"}
+    assert run_report["details"]["data_confirmations"] == {
+        **TOP_CONFIRMATIONS,
+        "data_basis_reviewed": True,
+    }
 
 
 def test_local_published_recipe_build_plan_is_ready() -> None:

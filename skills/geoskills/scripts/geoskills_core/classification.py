@@ -59,6 +59,12 @@ class FieldDefinition:
 
 
 @dataclass(frozen=True)
+class BoundaryLineDefinition:
+    id: str
+    vertices: tuple[tuple[float, float], ...]
+
+
+@dataclass(frozen=True)
 class ClassificationModel:
     id: str
     display_name: str
@@ -69,6 +75,7 @@ class ClassificationModel:
     x_axis: AxisDefinition
     y_axis: AxisDefinition
     fields: tuple[FieldDefinition, ...]
+    display_boundaries: tuple[BoundaryLineDefinition, ...]
     boundary_tolerance: float
 
     def to_dict(self) -> dict[str, Any]:
@@ -93,7 +100,7 @@ class ClassificationModel:
                     result[name] = value
             return result
 
-        return {
+        result = {
             "schema_version": CLASSIFICATION_MODEL_SCHEMA_VERSION,
             "id": self.id,
             "display_name": self.display_name,
@@ -135,6 +142,15 @@ class ClassificationModel:
                 "outside": "outside",
             },
         }
+        if self.display_boundaries:
+            result["display_boundaries"] = [
+                {
+                    "id": item.id,
+                    "vertices": [list(point) for point in item.vertices],
+                }
+                for item in self.display_boundaries
+            ]
+        return result
 
 
 def _mapping(value: Any, field: str) -> dict[str, Any]:
@@ -289,6 +305,7 @@ def validate_classification_model(
             "variables",
             "axes",
             "fields",
+            "display_boundaries",
             "boundary",
         },
         "model",
@@ -297,7 +314,11 @@ def validate_classification_model(
         raise ClassificationModelError("unsupported model schema version")
 
     source = _mapping(root.get("source"), "source")
-    _strict(source, {"citation", "doi", "geometry_reference"}, "source")
+    _strict(
+        source,
+        {"citation", "doi", "geometry_doi", "geometry_reference"},
+        "source",
+    )
     source_record = {
         "citation": _text(source.get("citation"), "source.citation"),
         "geometry_reference": _text(
@@ -306,6 +327,10 @@ def validate_classification_model(
     }
     if source.get("doi") is not None:
         source_record["doi"] = _text(source["doi"], "source.doi")
+    if source.get("geometry_doi") is not None:
+        source_record["geometry_doi"] = _text(
+            source["geometry_doi"], "source.geometry_doi"
+        )
 
     review = _mapping(root.get("scientific_review"), "scientific_review")
     _strict(review, {"status", "reviewed_on", "notes"}, "scientific_review")
@@ -371,6 +396,41 @@ def validate_classification_model(
     if len(fields) != len({item.id.casefold() for item in fields}):
         raise ClassificationModelError("field IDs must be unique")
 
+    raw_display_boundaries = root.get("display_boundaries", [])
+    if not isinstance(raw_display_boundaries, list):
+        raise ClassificationModelError("display boundaries must be a list")
+    display_boundaries: list[BoundaryLineDefinition] = []
+    for index, value in enumerate(raw_display_boundaries):
+        field_name = f"display_boundaries[{index}]"
+        raw = _mapping(value, field_name)
+        _strict(raw, {"id", "vertices"}, field_name)
+        raw_vertices = raw.get("vertices")
+        if not isinstance(raw_vertices, list) or len(raw_vertices) < 2:
+            raise ClassificationModelError(
+                "display boundary needs at least two vertices"
+            )
+        vertices = tuple(
+            _coordinate(point, f"{field_name}.vertices[{point_index}]")
+            for point_index, point in enumerate(raw_vertices)
+        )
+        if any(
+            vertices[position] == vertices[position - 1]
+            for position in range(1, len(vertices))
+        ):
+            raise ClassificationModelError(
+                "display boundary has repeated adjacent vertices"
+            )
+        display_boundaries.append(
+            BoundaryLineDefinition(
+                id=_text(raw.get("id"), f"{field_name}.id", identifier=True),
+                vertices=vertices,
+            )
+        )
+    if len(display_boundaries) != len(
+        {item.id.casefold() for item in display_boundaries}
+    ):
+        raise ClassificationModelError("display boundary IDs must be unique")
+
     boundary = _mapping(root.get("boundary"), "boundary")
     _strict(boundary, {"tolerance", "on_boundary", "overlap", "outside"}, "boundary")
     if (
@@ -391,6 +451,7 @@ def validate_classification_model(
         x_axis=x_axis,
         y_axis=y_axis,
         fields=tuple(fields),
+        display_boundaries=tuple(display_boundaries),
         boundary_tolerance=tolerance,
     )
     for field in model.fields:
@@ -425,6 +486,21 @@ def validate_classification_model(
         )
         if abs(twice_area) <= 1e-12:
             raise ClassificationModelError("field polygon has zero area")
+    for boundary_line in model.display_boundaries:
+        for x_value, y_value in boundary_line.vertices:
+            if (model.x_axis.scale == "log10" and x_value <= 0) or (
+                model.y_axis.scale == "log10" and y_value <= 0
+            ):
+                raise ClassificationModelError(
+                    "log-axis display boundary must be positive"
+                )
+            if not (
+                model.x_axis.limits[0] <= x_value <= model.x_axis.limits[1]
+                and model.y_axis.limits[0] <= y_value <= model.y_axis.limits[1]
+            ):
+                raise ClassificationModelError(
+                    "display boundary must lie within fixed axis limits"
+                )
     json.dumps(model.to_dict(), ensure_ascii=False, allow_nan=False)
     return model
 
@@ -738,15 +814,20 @@ def add_classification_background(
 ) -> Any:
     """Draw reviewed field geometry without plotting or interpreting samples."""
 
-    for field in model.fields:
-        closed = [*field.vertices, field.vertices[0]]
+    lines = (
+        [item.vertices for item in model.display_boundaries]
+        if model.display_boundaries
+        else [[*field.vertices, field.vertices[0]] for field in model.fields]
+    )
+    for vertices in lines:
         axes.plot(
-            [point[0] for point in closed],
-            [point[1] for point in closed],
+            [point[0] for point in vertices],
+            [point[1] for point in vertices],
             color="#333333",
             linewidth=0.8,
             zorder=1,
         )
+    for field in model.fields:
         if add_labels and field.label_position is not None:
             axes.text(
                 field.label_position[0],
@@ -770,6 +851,7 @@ __all__ = [
     "CLASSIFICATION_MODEL_SCHEMA_VERSION",
     "MAX_CLASSIFICATION_MODEL_BYTES",
     "AxisDefinition",
+    "BoundaryLineDefinition",
     "ClassificationModel",
     "ClassificationModelError",
     "FieldDefinition",

@@ -1,6 +1,6 @@
-# GeoSkills v0.5 配方与安全运行流程
+# GeoSkills v0.6 配方与安全运行流程
 
-本页解释统一工作流。v0.5 在不改变 REE、蛛网图、Harker 或 TAS 科学计算的前提下，增加绘图前质控和受限派生比值，并继续把已审核绘图器放在同一套可检查、可重复流程中。
+本页解释统一工作流。v0.6 保留 REE、蛛网图、Harker 和 TAS，并加入显式无水100%数据基准与经复核的 K2O-SiO2 图；所有图仍在同一套可检查、可重复流程中运行。
 
 ## 先理解三个词
 
@@ -123,7 +123,7 @@ tasks:
 
 `plotted_data_export_reviewed: true` 只表示已经核对 `report_profile` 的导出后果：`shareable` 不保留逐样品 CSV，`local-reproducible` 会保留敏感 CSV。它不表示允许把数据上传到模型、分析服务或第三方服务器。
 
-`quality` 和 `derived_variables` 都是可选字段。省略 `quality` 时仍会采用保守默认值：重复样品编号和非数字/非有限内容作为错误，不开启主量总量范围检查。`data_quality_reviewed` 只有在计数摘要出现 `review` 状态时才必须明确为 `true`；模型不能代替用户确认。完整规则见 [数据质控与派生比值](data-quality-and-derived-variables.md)。
+`quality`、`derived_variables` 和 `data_basis` 都是可选字段。省略 `quality` 时仍会采用保守默认值：重复样品编号和非数字/非有限内容作为错误，不开启主量总量范围检查。配置 `data_basis` 时必须明确提供 `data_basis_reviewed`；模型不能代替用户确认。完整规则见 [数据质控、组成基准与派生比值](data-quality-and-derived-variables.md)。
 
 ## 输入
 
@@ -209,6 +209,32 @@ confirmations:
 ```
 
 只有在用户理解并接受“该分类只是初步结果”后，才能将 `provisional_classification_accepted` 设为 `true`。
+
+K2O-SiO2：
+
+```yaml
+data_basis:
+  operation: normalize-to-100
+  basis: anhydrous-100
+  analytes: [SiO2, TiO2, Al2O3, Fe2O3T, MnO, MgO, CaO, Na2O, K2O, P2O5]
+
+confirmations:
+  data_basis_reviewed: true
+
+tasks:
+  - id: k2o-main
+    diagram: k2o-sio2
+    stem: figure-k2o-sio2
+    preset: publication-double-column
+    parameters:
+      composition_basis: anhydrous-normalized
+      groups: all
+    confirmations:
+      volcanic_samples: true
+      composition_basis_reviewed: true
+```
+
+该任务还要求配方顶层存在经确认的 `data_basis`，且氧化物列表至少包含 `SiO2` 和 `K2O`。文献边界不外推；`SiO2 = 48–63 wt%` 之外的可见样品只绘点、不自动分类。
 
 ## 图件预设
 

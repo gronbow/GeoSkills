@@ -1,6 +1,6 @@
 # REE input data contract
 
-This file records the REE input rules introduced in GeoSkills v0.1.0 and retained through v0.5.0.
+This file records the REE input rules introduced in GeoSkills v0.1.0 and retained through v0.6.0.
 
 ## Required information
 

@@ -2,6 +2,15 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
+## v0.6.0-dev — local candidate
+
+- Added an explicit, non-destructive anhydrous 100% data-basis layer. The selected oxide list is user-reviewed, source columns remain unchanged, volatile/LOI/Total columns are excluded, and invalid rows remain missing.
+- Added the scientifically reviewed K2O-SiO2 magma-series diagram using the original Peccerillo and Taylor (1976) boundary extents, Rickwood's (1989) corrected `(52, 1.5)` point, and no extrapolation.
+- Restricted complete four-field K2O-SiO2 classification to SiO2 48-63 wt%; visible points outside that domain remain unclassified and trigger review.
+- Added versioned boundary provenance, fixed-asset hashing, publication exports, group legends, count-only reports, and end-to-end recipe support for the new diagram.
+- Verified the structured `Nb/Y` and scaled `Zr(ppm)/TiO2(wt%) x 0.0001` coordinate calculations without registering Winchester-Floyd boundaries or claiming a supported diagram.
+- Preserved the v0.5 QA, derived-ratio, privacy, stale-plan, atomic-output, and four existing diagram contracts.
+
 ## v0.5.0 — 2026-08-09
 
 - Added privacy-safe table-wide QA summaries for blank or duplicate sample identifiers, missing values, below-detection-limit states, non-numeric or non-finite cells, and nonpositive values.
