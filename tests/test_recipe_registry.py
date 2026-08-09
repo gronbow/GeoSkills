@@ -120,7 +120,7 @@ def issue_codes(result: dict) -> set[str]:
 
 
 def test_version_and_registry_are_fixed_and_json_ready() -> None:
-    assert VERSION == "0.5.0-dev"
+    assert VERSION == "0.5.0"
     assert diagram_ids() == ("ree", "spider", "harker", "tas")
     assert set(DIAGRAMS) == {"ree", "spider", "harker", "tas"}
     assert BUILTIN_STYLE_PRESETS == (

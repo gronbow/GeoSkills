@@ -2,9 +2,7 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本为 [v0.4.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.4.0)。它不增加新图解，而是为已有的 REE、蛛网图、Harker 和 TAS 增加统一配方、运行前计划、隐私报告和多任务原子输出。
-
-当前 `feature/data-quality-classification-v0.5` 开发分支正在加入数据质控、同单位派生比值和通用分类模型底座；尚未增加第五类正式图解，也尚未发布 v0.5。
+当前正式版本为 [v0.5.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.5.0)。它在 v0.4 统一工作流上增加数据质控、同单位派生比值和通用分类模型底座；仍只注册 REE、蛛网图、Harker 和 TAS 四类正式图解。
 
 ## 当前可以做什么
 
@@ -31,7 +29,7 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
 ## 安装到 Codex
 
-公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.4.0：
+公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.5.0：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -62,7 +60,7 @@ python -m venv .venv
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
-## v0.4/v0.5 统一工作流
+## v0.5 统一工作流
 
 可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
 
@@ -209,7 +207,7 @@ GeoSkills/
 
 ## 当前状态
 
-GeoSkills v0.4.0 是当前正式版，已通过 196 项自动测试、合成数据回归和已发表数据回归。v0.5 本地开发分支已开始实现数据质控、派生比值和通用分类模型底座；完成全部回归、隐私检查和用户审核前不会上传。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.5.0 已完成数据质控、同单位派生比值和通用分类模型底座，并保留 v0.4 的四类正式图解与安全工作流。该版本通过 217 项自动测试、Ubuntu/Windows 的 Python 3.11/3.12 CI、合成与已发表数据回归，以及可分享文件隐私扫描。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 
