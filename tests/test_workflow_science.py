@@ -898,6 +898,106 @@ def test_major_example_basis_and_scientific_audit_reports(
     }
 
 
+def test_shareable_plan_and_reports_redact_source_names_and_selected_groups(
+    tmp_path: Path,
+) -> None:
+    sentinel_group = "PRIVATE-LOCALITY-X"
+    sentinel_file = "PROJECT-ALPHA-sample-001.csv"
+    sentinel_x_column = "PRIVATE-SILICA-COLUMN"
+    frame = pd.DataFrame(
+        {
+            "Sample": ["PRIVATE-SAMPLE-A", "PRIVATE-SAMPLE-B", "OTHER"],
+            "Group": [sentinel_group, sentinel_group, "Public group"],
+            sentinel_x_column: [50.0, 55.0, 60.0],
+            "MgO_wt%": [8.0, 6.0, 4.0],
+        }
+    )
+    case = tmp_path / "shareable-redaction"
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={"SiO2": sentinel_x_column, "MgO": "MgO_wt%"},
+        units={"major_oxides": "wt%", "trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "harker-main",
+                "harker",
+                {
+                    "x": "SiO2",
+                    "y": ["MgO"],
+                    "groups": [sentinel_group],
+                },
+            )
+        ],
+    )
+    (case / "input.csv").rename(case / sentinel_file)
+    recipe = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
+    recipe["input"]["file"] = sentinel_file
+    recipe_path.write_text(
+        yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    plan_path = case / "plan.json"
+
+    planned = create_plan(recipe_path, plan_path)
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert planned["status"] == "ready"
+    assert executed["status"] == "ready"
+    shareable_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in [plan_path, *sorted((case / "bundle").rglob("*.json")), *sorted((case / "bundle").rglob("*.md"))]
+    )
+    for token in (sentinel_group, sentinel_file, sentinel_x_column, "PRIVATE-SAMPLE"):
+        assert token not in shareable_text
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    selection = plan["tasks"][0]["parameters"]["groups"]
+    assert selection["selection_mode"] == "selected"
+    assert selection["selected_group_count"] == 1
+    assert len(selection["selection_sha256"]) == 64
+
+
+def test_changing_private_group_selection_invalidates_saved_plan(
+    tmp_path: Path,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": ["A1", "A2", "B1", "B2"],
+            "Group": ["PRIVATE-A", "PRIVATE-A", "PRIVATE-B", "PRIVATE-B"],
+            "SiO2_wt%": [50.0, 52.0, 60.0, 62.0],
+            "MgO_wt%": [8.0, 7.0, 4.0, 3.0],
+        }
+    )
+    case = tmp_path / "group-plan-invalidation"
+    recipe_path = _write_recipe(
+        case,
+        frame,
+        mapping={"SiO2": "SiO2_wt%", "MgO": "MgO_wt%"},
+        units={"major_oxides": "wt%", "trace_elements": "ppm"},
+        tasks=[
+            _task(
+                "harker-main",
+                "harker",
+                {"x": "SiO2", "y": ["MgO"], "groups": ["PRIVATE-A"]},
+            )
+        ],
+    )
+    plan_path = case / "plan.json"
+    assert create_plan(recipe_path, plan_path)["status"] == "ready"
+    recipe = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
+    recipe["tasks"][0]["parameters"]["groups"] = ["PRIVATE-B"]
+    recipe_path.write_text(
+        yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    executed = execute_plan(recipe_path, plan_path)
+
+    assert executed["status"] == "blocked"
+    assert "R803" in _issue_codes(executed)
+    assert not (case / "bundle").exists()
+
+
 def test_local_published_recipe_build_plan_is_ready() -> None:
     if not LOCAL_RECIPE.is_file():
         pytest.skip("local published regression recipe is not available")

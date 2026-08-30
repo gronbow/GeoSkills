@@ -26,6 +26,7 @@ from normalize_spider import (
     resolve_reference,
     spider_reference_summary,
 )
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     PUBLICATION_DOUBLE_COLUMN,
     publication_styled,
@@ -121,6 +122,8 @@ def plot_spider_path(
     axes_frame: str = "full",
     legend_layout: str = "inside-auto",
     grid_style: str = "none",
+    show_sample_ids: bool = True,
+    group_legend_title: str = "Group",
     overwrite: bool = False,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
@@ -249,17 +252,14 @@ def plot_spider_path(
             y_label=f"Sample / {axis_reference}",
             reference_note=note_reference,
             x_tick_labelsize=6.2,
+            x_tick_stagger=True,
+            show_sample_ids=show_sample_ids,
+            group_legend_title=group_legend_title,
             style_preset=style_preset,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        for path in figure_paths:
-            save_options: dict[str, Any] = {"facecolor": "white"}
-            if path.suffix.lower() in {".png", ".tiff"}:
-                save_options["dpi"] = dpi
-            if path.suffix.lower() == ".tiff":
-                save_options["pil_kwargs"] = {"compression": "tiff_lzw"}
-            figure.savefig(path, **save_options)
+        save_figure_files(figure, figure_paths, dpi=dpi)
         source_columns = [sample_column]
         if group_column is not None:
             source_columns.append(group_column)
@@ -387,6 +387,8 @@ def plot_spider_path(
                 "axes_frame": axes_frame,
                 "legend_layout": legend_layout,
                 "legend_position": plot_info["legend_position"],
+                "show_sample_ids": show_sample_ids,
+                "group_legend_title": group_legend_title,
                 "grid_style": grid_style,
                 "width_mm": width_mm,
                 "height_mm": height_mm,
@@ -409,7 +411,11 @@ def plot_spider_path(
                 "tiff_compression": "LZW",
                 "white_background": True,
                 "colourblind_support": (
-                    "group colour plus line style; unique sample symbol"
+                    "group colour plus line style; sample IDs suppressed"
+                    if not show_sample_ids and group_column is not None
+                    else "sample symbols shown without identity key"
+                    if not show_sample_ids
+                    else "group colour plus line style; unique sample symbol"
                     if not plot_info["marker_repeated"]
                     else (
                         "group colour plus line style; sample symbols repeat "
@@ -506,6 +512,16 @@ def parse_args() -> argparse.Namespace:
         help="横向网格：none（默认）或 major",
     )
     parser.add_argument(
+        "--hide-sample-ids",
+        action="store_true",
+        help="不在图件图例中显示样品编号；分组图例仍保留",
+    )
+    parser.add_argument(
+        "--group-legend-title",
+        default="Group",
+        help="分组图例标题，默认 Group；不会根据列名猜测岩性",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="明确允许替换已存在的整套输出文件",
@@ -536,6 +552,8 @@ def main() -> int:
         axes_frame=args.axes_frame,
         legend_layout=args.legend_layout,
         grid_style=args.grid_style,
+        show_sample_ids=not args.hide_sample_ids,
+        group_legend_title=args.group_legend_title,
         overwrite=args.overwrite,
     )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)

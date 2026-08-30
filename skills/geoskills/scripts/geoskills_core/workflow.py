@@ -25,6 +25,7 @@ from .export import (
 )
 from .recipe import load_recipe, resolve_recipe_path
 from .registry import DIAGRAM_API_VERSION, get_diagram
+from .style_contract import BUILTIN_STYLE_DEFAULTS
 from .reports import (
     REPORT_SCHEMA_NAME,
     REPORT_SCHEMA_VERSION,
@@ -55,18 +56,7 @@ _ASSET_PATHS = {
         "assets/classification/k2o-sio2-pt76-r89-original.json"
     ),
 }
-_BUILTIN_STYLE_DEFAULTS: Mapping[str, Mapping[str, int | float]] = {
-    "publication-double-column": {
-        "width_mm": 183.0,
-        "height_mm": 120.0,
-        "dpi": 600,
-    },
-    "review-preview": {
-        "width_mm": 150.0,
-        "height_mm": 100.0,
-        "dpi": 300,
-    },
-}
+_BUILTIN_STYLE_DEFAULTS = BUILTIN_STYLE_DEFAULTS
 _DIAGRAM_STYLE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
     "ree": {
         "axes_frame": "full",
@@ -86,6 +76,11 @@ _DIAGRAM_STYLE_DEFAULTS: Mapping[str, Mapping[str, Any]] = {
     },
     "tas": {"legend_layout": "inside-auto"},
     "k2o-sio2": {"legend_layout": "inside-auto"},
+    "xy": {
+        "axes_frame": "full",
+        "legend_layout": "inside-auto",
+        "margin_fraction": 0.06,
+    },
 }
 
 
@@ -302,6 +297,10 @@ def _expanded_style(
         raise WorkflowError("绘图预设不在固定注册表中。", code="E809") from exc
     style.update(dict(overrides))
     style.update(_DIAGRAM_STYLE_DEFAULTS[str(task["diagram"])])
+    if str(task["diagram"]) in {"ree", "spider"}:
+        style["show_sample_ids"] = (
+            recipe["output"]["report_profile"] != "shareable"
+        )
     style["preset"] = preset_name
     style["base_preset"] = base_name
     return style
@@ -393,6 +392,126 @@ def _mapping_snapshot(prepared: PreparedInput) -> list[dict[str, str]]:
         }
         for mapping in prepared.mappings
     ]
+
+
+def _shareable_source(source: Mapping[str, Any]) -> dict[str, Any]:
+    """Return source provenance without user-identifying file metadata."""
+
+    return {
+        str(key): deepcopy(value)
+        for key, value in source.items()
+        if str(key) not in {"filename", "sheet", "sheet_names"}
+    }
+
+
+def _shareable_mapping(
+    mapping: Sequence[Mapping[str, str]],
+) -> list[dict[str, str]]:
+    """Keep scientific mapping semantics without private source headers."""
+
+    return [
+        {
+            str(key): str(value)
+            for key, value in item.items()
+            if str(key) != "source_column"
+        }
+        for item in mapping
+    ]
+
+
+def _shareable_parameters(parameters: Mapping[str, Any]) -> dict[str, Any]:
+    """Replace selected group values with a deterministic count-only digest."""
+
+    result = deepcopy(dict(parameters))
+    groups = result.get("groups")
+    if isinstance(groups, list):
+        group_values = [str(value) for value in groups]
+        result["groups"] = {
+            "selection_mode": "selected",
+            "selected_group_count": len(group_values),
+            "selection_sha256": _digest_json(group_values),
+        }
+    return result
+
+
+def _shareable_issue(
+    issue: Mapping[str, Any],
+    *,
+    sensitive_tokens: Sequence[str],
+) -> dict[str, Any]:
+    """Keep actionable issue fields while removing private diagnostic payloads."""
+
+    result = {
+        str(key): deepcopy(value)
+        for key, value in issue.items()
+        if str(key)
+        in {
+            "code",
+            "severity",
+            "message",
+            "field",
+            "suggested_action",
+            "task_id",
+            "asset_id",
+        }
+    }
+    tokens = sorted(
+        {str(value) for value in sensitive_tokens if str(value)},
+        key=len,
+        reverse=True,
+    )
+    for key, value in list(result.items()):
+        if not isinstance(value, str):
+            continue
+        redacted = value
+        for token in tokens:
+            redacted = redacted.replace(token, "<redacted>")
+        result[key] = redacted
+    return result
+
+
+def _task_records(
+    *,
+    tasks: Sequence[Mapping[str, Any]],
+    assets: Mapping[str, list[dict[str, Any]]],
+    inspections: Mapping[str, Mapping[str, Any]],
+    report_profile: str,
+    shareable: bool,
+    sensitive_tokens: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for task in tasks:
+        task_id = str(task["id"])
+        parameters = (
+            _shareable_parameters(task["parameters"])
+            if shareable
+            else deepcopy(task["parameters"])
+        )
+        inspection = deepcopy(inspections[task_id])
+        if shareable and isinstance(inspection.get("issues"), list):
+            inspection["issues"] = [
+                _shareable_issue(item, sensitive_tokens=sensitive_tokens)
+                for item in inspection["issues"]
+                if isinstance(item, Mapping)
+            ]
+        records.append(
+            {
+                "id": task_id,
+                "diagram": task["diagram"],
+                "stem": task["stem"],
+                "preset": task["preset"],
+                "parameters": parameters,
+                "confirmations": deepcopy(task["confirmations"]),
+                "style": deepcopy(task["style"]),
+                "registry_contract": get_diagram(
+                    str(task["diagram"])
+                ).to_dict(),
+                "inspection": inspection,
+                "assets": deepcopy(assets[task_id]),
+                "expected_outputs": _expected_outputs(task, report_profile),
+            }
+        )
+    return records
 
 
 def _recipe_member_paths(
@@ -530,26 +649,41 @@ def _finalize_plan(
         },
     }
     report_profile = str(recipe["output"]["report_profile"])
-    task_records = []
-    for task in tasks:
-        task_id = str(task["id"])
-        task_records.append(
-            {
-                "id": task_id,
-                "diagram": task["diagram"],
-                "stem": task["stem"],
-                "preset": task["preset"],
-                "parameters": task["parameters"],
-                "confirmations": task["confirmations"],
-                "style": task["style"],
-                "registry_contract": get_diagram(
-                    str(task["diagram"])
-                ).to_dict(),
-                "inspection": inspections[task_id],
-                "assets": assets[task_id],
-                "expected_outputs": _expected_outputs(task, report_profile),
-            }
-        )
+    sensitive_tokens = [
+        str(recipe["input"].get("file", "")),
+        Path(str(recipe["input"].get("file", ""))).name,
+        str(recipe["input"].get("sheet") or ""),
+        str(source.get("filename", "")),
+        str(source.get("sheet", "")),
+        *[
+            str(group)
+            for task in tasks
+            for group in (
+                task.get("parameters", {}).get("groups", [])
+                if isinstance(task.get("parameters", {}).get("groups"), list)
+                else []
+            )
+        ],
+    ]
+    exact_task_records = _task_records(
+        tasks=tasks,
+        assets=assets,
+        inspections=inspections,
+        report_profile=report_profile,
+        shareable=False,
+    )
+    public_task_records = _task_records(
+        tasks=tasks,
+        assets=assets,
+        inspections=inspections,
+        report_profile=report_profile,
+        shareable=True,
+        sensitive_tokens=sensitive_tokens,
+    )
+    public_issues = [
+        _shareable_issue(item, sensitive_tokens=sensitive_tokens)
+        for item in issues
+    ]
 
     plan_basis = {
         "tool_version": VERSION,
@@ -568,7 +702,7 @@ def _finalize_plan(
         "input": dict(source),
         "column_mapping": [dict(item) for item in mapping],
         "data_processing": data_processing,
-        "tasks": task_records,
+        "tasks": exact_task_records,
     }
     plan_id = _digest_json(plan_basis)
     plan = {
@@ -580,15 +714,15 @@ def _finalize_plan(
             "version": VERSION,
             "diagram_api_version": DIAGRAM_API_VERSION,
         },
-        "input": dict(source),
-        "column_mapping": [dict(item) for item in mapping],
+        "input": _shareable_source(source),
+        "column_mapping": _shareable_mapping(mapping),
         "data_processing": data_processing,
         "output": recipe["output"],
         "confirmations": recipe["confirmations"],
-        "tasks": task_records,
-        "issues": issues,
+        "tasks": public_task_records,
+        "issues": public_issues,
     }
-    return {"status": status, "plan": plan, "issues": issues}
+    return {"status": status, "plan": plan, "issues": public_issues}
 
 
 def build_plan(
@@ -790,6 +924,9 @@ def _safe_plot_summary(
             "y_limits",
             "unity_line_visible",
             "plotted_sample_count",
+            "legend_sample_count",
+            "sample_ids_rendered",
+            "group_legend_title",
             "line_style_repeated",
             "grid_style",
             "legend_fallback",
@@ -833,6 +970,12 @@ def _safe_plot_summary(
             "visible_coordinate_count",
             "outside_axes_count",
             "legend_fallback",
+        },
+        "xy": {
+            "joint_valid_count",
+            "x_scale",
+            "y_scale",
+            "sample_labels_rendered",
         },
     }
     allowed = common | diagram_fields.get(diagram, set())
@@ -880,7 +1023,7 @@ def _safe_scientific_details(
         "task_id": str(task["id"]),
         "diagram": diagram,
         "plan_id": plan_id,
-        "scientific_parameters": deepcopy(task["parameters"]),
+        "scientific_parameters": _shareable_parameters(task["parameters"]),
         "scientific_confirmations": deepcopy(task["confirmations"]),
         "analyte_units": {
             mapping.canonical_analyte: mapping.unit
@@ -898,7 +1041,15 @@ def _safe_scientific_details(
     }
     conversions = legacy_report.get("oxide_conversions")
     if isinstance(conversions, list) and conversions:
-        details["oxide_conversions"] = deepcopy(conversions)
+        details["oxide_conversions"] = [
+            {
+                str(key): deepcopy(value)
+                for key, value in conversion.items()
+                if str(key) != "source_column"
+            }
+            for conversion in conversions
+            if isinstance(conversion, Mapping)
+        ]
     guidance = legacy_report.get("interpretation_guidance")
     if isinstance(guidance, list):
         details["interpretation_guidance"] = [
@@ -1420,6 +1571,13 @@ def execute_plan(
                 preflight_issues=(),
             )
             current_plan = current["plan"]
+            execution_tasks = _task_records(
+                tasks=tasks,
+                assets=assets,
+                inspections=inspections,
+                report_profile=report_profile,
+                shareable=False,
+            )
             if current_plan["plan_id"] != saved_plan["plan_id"]:
                 return {
                     "status": "blocked",
@@ -1446,7 +1604,7 @@ def execute_plan(
                     "output_directory": None,
                     "issues": current["issues"],
                 }
-            for task in current_plan["tasks"]:
+            for task in execution_tasks:
                 task_dir = staging_root / str(task["id"])
                 _verify_task_assets(task)
                 legacy_report = run_task(
@@ -1579,7 +1737,7 @@ def execute_plan(
             _verify_run_directory(
                 staging_root,
                 task_ids=[
-                    str(task["id"]) for task in current_plan["tasks"]
+                    str(task["id"]) for task in execution_tasks
                 ],
             )
             transaction.commit()

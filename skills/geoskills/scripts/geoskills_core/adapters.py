@@ -24,6 +24,11 @@ from .quality import assess_data_quality
 from .validation import ColumnMapping, validate_column_mappings
 
 
+MAX_PLOT_POINTS = 100_000
+MAX_PLOT_GROUPS = 64
+MAX_PLOT_ARTISTS = 2_000
+
+
 class AdapterError(GeoSkillsError):
     """A recipe cannot be translated safely to a reviewed plotter."""
 
@@ -43,6 +48,83 @@ class PreparedInput:
     quality: dict[str, Any]
     derived: dict[str, Any]
     basis: dict[str, Any]
+
+
+def _plot_budget_issues(
+    diagram: str,
+    parameters: Mapping[str, Any],
+    frame: pd.DataFrame | None,
+    group_column: str | None,
+) -> list[dict[str, str]]:
+    """Fail closed before plotting would create excessive vector content."""
+
+    if frame is None:
+        return []
+    row_count = int(frame.shape[0])
+    if diagram in {"ree", "spider"}:
+        series_count = len(parameters.get("elements", []))
+        artist_count = row_count
+    elif diagram == "harker":
+        series_count = len(parameters.get("y", []))
+        artist_count = 1
+    else:
+        series_count = 1
+        artist_count = 1
+    group_count = 1
+    if group_column is not None and group_column in frame.columns:
+        group_text = (
+            frame[group_column]
+            .astype("string")
+            .str.strip()
+            .fillna("Unspecified")
+            .replace("", "Unspecified")
+        )
+        group_count = int(group_text.nunique(dropna=False))
+        if diagram not in {"ree", "spider"}:
+            artist_count = group_count * max(series_count, 1)
+    point_count = row_count * max(series_count, 1)
+    issues: list[dict[str, str]] = []
+    if point_count > MAX_PLOT_POINTS:
+        issues.append(
+            {
+                "code": "E422",
+                "severity": "error",
+                "message": (
+                    "图件预计数据点数量超过安全上限；GeoSkills 不会静默抽样。"
+                ),
+                "field": "tasks.parameters",
+                "suggested_action": (
+                    "把完整数据按科学问题拆分为多个任务，或减少一次绘制的变量数量。"
+                ),
+            }
+        )
+    if group_count > MAX_PLOT_GROUPS:
+        issues.append(
+            {
+                "code": "E423",
+                "severity": "error",
+                "message": (
+                    "图件分组数量超过安全且可读的上限；GeoSkills 不会合并分组。"
+                ),
+                "field": "tasks.parameters.groups",
+                "suggested_action": "按科研问题拆分分组，并为每个子集建立独立任务。",
+            }
+        )
+    if artist_count > MAX_PLOT_ARTISTS:
+        issues.append(
+            {
+                "code": "E424",
+                "severity": "error",
+                "message": (
+                    "图件预计独立绘图对象数量超过安全上限；GeoSkills 不会静默简化。"
+                ),
+                "field": "tasks.parameters",
+                "suggested_action": (
+                    "把样品或变量拆分为多幅完整图件，并分别审核其配方。"
+                ),
+            }
+        )
+    return issues
 
 
 def _unit_for(
@@ -113,7 +195,12 @@ def prepare_mapped_input(
         raise AdapterError(
             "Excel 文件包含多个工作表；必须在配方中明确 input.sheet。",
             code="E403",
-            details={"sheet_names": source.get("sheet_names", [])},
+            details={
+                "sheet_count": len(source.get("sheet_names", [])),
+                "available_sheet_indices": list(
+                    range(len(source.get("sheet_names", [])))
+                ),
+            },
         )
     if (
         layout == "analyte-per-row"
@@ -375,7 +462,7 @@ def inspect_task(
                 ].copy()
                 if diagram in {"ree", "spider"}:
                     inspection_path = _task_input_path(task, prepared)
-    elif diagram in {"ree", "spider", "harker", "tas", "k2o-sio2"}:
+    elif diagram in {"ree", "spider", "harker", "tas", "k2o-sio2", "xy"}:
         selected_frame = pd.read_csv(inspection_path)
 
     if diagram == "ree":
@@ -414,6 +501,30 @@ def inspect_task(
             item["analyte"]
             for item in report.get("analytes", {}).get("recognized", [])
         ]
+    elif diagram == "xy":
+        from plot_xy import inspect_xy_path
+
+        analyte_columns = {
+            mapping.canonical_analyte: (
+                f"{mapping.canonical_analyte}_{mapping.unit}"
+            )
+            for mapping in prepared.mappings
+        }
+        analyte_units = {
+            mapping.canonical_analyte: mapping.unit
+            for mapping in prepared.mappings
+        }
+        report = inspect_xy_path(
+            inspection_path,
+            x_reference=parameters["x"],
+            y_reference=parameters["y"],
+            analyte_columns=analyte_columns,
+            analyte_units=analyte_units,
+            derived_summary=prepared.derived,
+            requested_groups=parameters.get("groups", "all"),
+            group_column=prepared.group_column,
+        )
+        recognized = list(report.get("recognized_analytes", []))
     else:
         raise AdapterError(
             "图件类型不在固定注册表中。",
@@ -422,6 +533,14 @@ def inspect_task(
         )
 
     issues = _safe_issues(report)
+    budget_issues = _plot_budget_issues(
+        diagram,
+        parameters,
+        selected_frame,
+        prepared.group_column,
+    )
+    issues.extend(budget_issues)
+    resource_blocked = bool(budget_issues)
     requested: list[str] = []
     if diagram in {"ree", "spider"}:
         requested = [str(value) for value in parameters.get("elements", [])]
@@ -434,6 +553,12 @@ def inspect_task(
         requested = ["SiO2", "Na2O", "K2O"]
     elif diagram == "k2o-sio2":
         requested = ["SiO2", "K2O"]
+    elif diagram == "xy":
+        requested = [
+            str(axis.get("id", ""))
+            for axis in (parameters.get("x", {}), parameters.get("y", {}))
+            if axis.get("kind") == "direct"
+        ]
     missing = sorted(
         {value for value in requested if value and value not in set(recognized)}
     )
@@ -634,6 +759,7 @@ def inspect_task(
         or harker_blocked
         or tas_blocked
         or k2o_blocked
+        or resource_blocked
         or status != "ready"
     ):
         status = "blocked"
@@ -724,6 +850,8 @@ def run_task(
             axes_frame=str(style.get("axes_frame", "full")),
             legend_layout=str(style.get("legend_layout", "inside-auto")),
             grid_style=str(style.get("grid_style", "none")),
+            show_sample_ids=bool(style.get("show_sample_ids", True)),
+            group_legend_title="Group",
         )
     if diagram == "spider":
         from plot_spider import plot_spider_path
@@ -738,6 +866,8 @@ def run_task(
             axes_frame=str(style.get("axes_frame", "full")),
             legend_layout=str(style.get("legend_layout", "inside-auto")),
             grid_style=str(style.get("grid_style", "none")),
+            show_sample_ids=bool(style.get("show_sample_ids", True)),
+            group_legend_title="Group",
         )
     if diagram == "harker":
         from plot_harker import plot_harker_path
@@ -786,6 +916,30 @@ def run_task(
             width_mm=float(style["width_mm"]),
             height_mm=float(style["height_mm"]),
             legend_layout=str(style.get("legend_layout", "inside-auto")),
+        )
+    if diagram == "xy":
+        from plot_xy import plot_xy_path
+
+        analyte_columns = {
+            mapping.canonical_analyte: (
+                f"{mapping.canonical_analyte}_{mapping.unit}"
+            )
+            for mapping in prepared.mappings
+        }
+        analyte_units = {
+            mapping.canonical_analyte: mapping.unit
+            for mapping in prepared.mappings
+        }
+        return plot_xy_path(
+            **common,
+            x_reference=parameters["x"],
+            y_reference=parameters["y"],
+            analyte_columns=analyte_columns,
+            analyte_units=analyte_units,
+            derived_summary=prepared.derived,
+            requested_groups=parameters.get("groups", "all"),
+            width_mm=float(style["width_mm"]),
+            height_mm=float(style["height_mm"]),
         )
     raise AdapterError(
         "图件类型不在固定注册表中。",

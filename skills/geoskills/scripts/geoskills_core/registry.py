@@ -296,6 +296,25 @@ _DIAGRAMS = {
         adapter="classification-model-v1",
         adapter_version="0.6.0",
     ),
+    "xy": _spec(
+        diagram_id="xy",
+        display_name_zh="通用二维坐标图",
+        display_name_en="Generic bivariate plot",
+        operation="generic_bivariate_plot",
+        input_profile="mapped-geochemistry",
+        inspector=("plot_xy", "inspect_xy_path"),
+        runner=("plot_xy", "plot_xy_path"),
+        scientific_schema={
+            "required": ("x", "y"),
+            "allowed": ("x", "y", "groups"),
+            "x": {"type": "structured-axis-variable"},
+            "y": {"type": "structured-axis-variable"},
+            "groups": {"type": "all-or-array"},
+            "additional_properties": False,
+        },
+        adapter="generic-bivariate-v1",
+        adapter_version="0.7.0",
+    ),
 }
 
 DIAGRAMS: Mapping[str, DiagramSpec] = MappingProxyType(_DIAGRAMS)

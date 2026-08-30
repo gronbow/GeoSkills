@@ -63,11 +63,9 @@ REPORT_JSON_SCHEMA: Mapping[str, Any] = {
 
 _SHAREABLE_SOURCE_KEYS = frozenset(
     {
-        "filename",
         "file_sha256",
         "size_bytes",
         "format",
-        "sheet",
         "layout",
         "row_count",
         "column_count",
@@ -141,6 +139,8 @@ def _normalise_source(
 ) -> dict[str, Any]:
     result = dict(source or {})
     if shareable:
+        for sensitive_key in ("filename", "sheet", "sheet_names"):
+            result.pop(sensitive_key, None)
         unsupported = sorted(set(result) - _SHAREABLE_SOURCE_KEYS)
         if unsupported:
             raise ReportError(
@@ -292,7 +292,7 @@ def _markdown_text(value: Any) -> str:
 
 def _status_label(status: str) -> str:
     return {
-        "ready": "已完成",
+        "ready": "技术生成完成",
         "needs_input": "需要补充信息",
         "review": "等待审核",
         "blocked": "已阻止输出",
@@ -314,10 +314,12 @@ def render_qa_markdown(report: Mapping[str, Any]) -> str:
             f"- 报告格式：{REPORT_SCHEMA_NAME} "
             f"{REPORT_SCHEMA_VERSION}"
         ),
-        "",
-        "## 输出文件",
-        "",
     ]
+    if report["status"] == "ready":
+        lines.append(
+            "- 说明：技术生成已完成；仍需按最终尺寸进行视觉与科学审核。"
+        )
+    lines.extend(["", "## 输出文件", ""])
 
     outputs = list(report["outputs"])
     if outputs:

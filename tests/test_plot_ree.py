@@ -78,7 +78,9 @@ def test_exports_publication_bundle_and_report(tmp_path: Path) -> None:
     assert pdf_path.read_bytes().startswith(b"%PDF")
     assert tiff_path.read_bytes()[:4] in {b"II*\x00", b"MM\x00*"}
     with Image.open(tiff_path) as tiff_image:
+        assert tiff_image.mode == "RGB"
         assert tiff_image.tag_v2.get(259) == 5
+        assert tiff_image.info["dpi"] == (100.0, 100.0)
     svg = svg_path.read_text(encoding="utf-8")
     assert "<text" in svg
     assert "C1 chondrite" in svg
@@ -436,6 +438,93 @@ def test_skipped_sample_is_not_listed_in_legend() -> None:
         assert plot_info["legend_sample_count"] == 1
         assert plot_info["skipped_samples"] == ["EMPTY"]
         assert legend_labels == ["PLOTTED"]
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_sample_ids_can_be_suppressed_while_group_key_is_preserved() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["PRIVATE-001", "PRIVATE-002"],
+                "Group": ["Suite A", "Suite B"],
+                "La_N": [12.0, 18.0],
+                "Ce_N": [10.0, 15.0],
+                "Pr_N": [8.0, 12.0],
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=100,
+            height_mm=70,
+            show_sample_ids=False,
+        )
+
+        assert len(figure.legends) == 1
+        legend = figure.legends[0]
+        assert legend.get_title().get_text() == "Group"
+        legend_text = " ".join(text.get_text() for text in legend.get_texts())
+        assert "Suite A" in legend_text
+        assert "Suite B" in legend_text
+        assert "PRIVATE-001" not in legend_text
+        assert "PRIVATE-002" not in legend_text
+        assert plot_info["sample_ids_rendered"] is False
+        assert plot_info["legend_sample_count"] == 0
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)
+
+
+def test_group_legend_title_is_explicit_not_inferred_from_column_name() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["A"],
+                "Group": ["Suite A"],
+                "La_N": [12.0],
+                "Ce_N": [10.0],
+                "Pr_N": [8.0],
+            }
+        )
+        default_figure, _ = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=100,
+            height_mm=70,
+            show_sample_ids=False,
+        )
+        explicit_figure, _ = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=100,
+            height_mm=70,
+            show_sample_ids=False,
+            group_legend_title="Lithology",
+        )
+
+        assert default_figure.legends[0].get_title().get_text() == "Group"
+        assert explicit_figure.legends[0].get_title().get_text() == "Lithology"
     finally:
         if "plot_ree" in sys.modules:
             sys.modules["plot_ree"].plt.close("all")

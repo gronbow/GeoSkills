@@ -28,6 +28,7 @@ from geoskills_core.classification import (
     load_classification_model,
 )
 from geoskills_core.errors import PlottingError
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     GROUP_COLORS,
     MARKERS,
@@ -42,11 +43,11 @@ from inspect_major_data import (
     read_major_table,
 )
 from plot_geochem_common import (
+    analyte_label,
     ensure_outputs_available,
     filter_requested_groups,
     group_style_map,
     output_targets,
-    save_figure_bundle,
     shareable_file_record,
     validate_export_parameters,
 )
@@ -190,12 +191,7 @@ def _add_legend(
     return "outside_right_fallback", requested_layout == "inside-auto"
 
 
-@publication_styled(
-    overrides={
-        "font.sans-serif": ["DejaVu Sans", "Arial", "Liberation Sans"]
-    },
-    preset_parameter="style_preset",
-)
+@publication_styled(preset_parameter="style_preset")
 def build_figure(
     classified: pd.DataFrame,
     sample_column: str,
@@ -252,6 +248,10 @@ def build_figure(
             )
 
     add_classification_background(ax, model, add_labels=False)
+    # Keep the scientific asset immutable while rendering chemical formulae
+    # through Matplotlib's font-safe math text instead of Unicode subscripts.
+    ax.set_xlabel(analyte_label("SiO2", "wt%"))
+    ax.set_ylabel(analyte_label("K2O", "wt%"))
     domain_x = [
         min(point[0] for field in model.fields for point in field.vertices),
         max(point[0] for field in model.fields for point in field.vertices),
@@ -339,7 +339,7 @@ def build_figure(
         0.105,
         0.035,
         "Peccerillo & Taylor (1976); coordinates corrected by Rickwood (1989).\n"
-        "Anhydrous 100% basis; no extrapolation; complete four-field domain: SiO₂ 48–63 wt%.",
+        "Anhydrous 100% basis; no extrapolation; complete four-field domain: SiO2 48–63 wt%.",
         fontsize=5.3,
         color="#4D4D4D",
         ha="left",
@@ -504,7 +504,7 @@ def plot_k2o_sio2_path(
             style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        save_figure_bundle(figure, figure_paths, dpi)
+        save_figure_files(figure, figure_paths, dpi=dpi)
         classified.to_csv(
             source_path,
             index=False,

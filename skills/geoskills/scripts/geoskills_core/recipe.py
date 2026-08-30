@@ -9,6 +9,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable, Mapping
 
 import yaml
+from yaml.constructor import ConstructorError
 
 from .analytes import (
     DEFAULT_ANALYTE_REGISTRY,
@@ -16,6 +17,7 @@ from .analytes import (
     SPIDER_ELEMENT_ORDER,
 )
 from .registry import BUILTIN_STYLE_PRESETS, DIAGRAMS, get_diagram
+from .style_contract import BUILTIN_STYLE_DEFAULTS, validate_style_contract
 
 
 RECIPE_SCHEMA_VERSION = "geoskills.recipe/v1"
@@ -95,6 +97,7 @@ _PARAMETER_FIELDS = {
     "harker": frozenset({"x", "y", "groups"}),
     "tas": frozenset({"composition_basis", "groups"}),
     "k2o-sio2": frozenset({"composition_basis", "groups"}),
+    "xy": frozenset({"x", "y", "groups"}),
 }
 _PARAMETER_REQUIRED = {
     "ree": frozenset({"reference", "elements"}),
@@ -102,6 +105,7 @@ _PARAMETER_REQUIRED = {
     "harker": frozenset({"x", "y"}),
     "tas": frozenset({"composition_basis"}),
     "k2o-sio2": frozenset({"composition_basis"}),
+    "xy": frozenset({"x", "y"}),
 }
 _LAYOUTS = frozenset(
     {"row-per-sample", "analyte-per-row", "auto"}
@@ -132,6 +136,45 @@ _DATA_BASIS_EXCLUDED = frozenset(
 _DUPLICATE_POLICIES = frozenset({"error"})
 _INVALID_VALUE_POLICIES = frozenset({"warning", "review", "error"})
 MAX_DERIVED_VARIABLES = 32
+
+
+class _UniqueKeySafeLoader(yaml.SafeLoader):
+    """Safe YAML loader which rejects ambiguous duplicate mapping keys."""
+
+
+def _construct_unique_mapping(
+    loader: _UniqueKeySafeLoader,
+    node: yaml.nodes.MappingNode,
+    deep: bool = False,
+) -> dict[Any, Any]:
+    loader.flatten_mapping(node)
+    mapping: dict[Any, Any] = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        try:
+            duplicate = key in mapping
+        except TypeError as exc:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                "found an unhashable mapping key",
+                key_node.start_mark,
+            ) from exc
+        if duplicate:
+            raise ConstructorError(
+                "while constructing a mapping",
+                node.start_mark,
+                f"found duplicate key {key!r}",
+                key_node.start_mark,
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+_UniqueKeySafeLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
 
 
 def _issue(
@@ -1140,6 +1183,24 @@ def _validate_presets(
         style = _validate_style(
             preset.get("style"), f"presets.{name}.style", issues
         )
+        if extends in BUILTIN_STYLE_DEFAULTS:
+            expanded = dict(BUILTIN_STYLE_DEFAULTS[extends])
+            expanded.update(style)
+            try:
+                validate_style_contract(
+                    float(expanded["width_mm"]),
+                    float(expanded["height_mm"]),
+                    int(expanded["dpi"]),
+                )
+            except ValueError:
+                issues.append(
+                    _issue(
+                        "E314",
+                        "error",
+                        "该尺寸与 DPI 组合超过固定栅格资源预算；请减小尺寸或 DPI。",
+                        field=f"presets.{name}.style",
+                    )
+                )
         normalized[name] = {"extends": extends, "style": style}
     return normalized, names
 
@@ -1310,6 +1371,7 @@ def _validate_parameters(
     diagram: str,
     task_id: str,
     mapped: set[str],
+    derived_ids: set[str],
     has_group_column: bool,
     issues: list[dict[str, str]],
 ) -> dict[str, Any]:
@@ -1462,12 +1524,69 @@ def _validate_parameters(
                         task_id=task_id,
                     )
                 )
+    elif diagram == "xy":
+        for axis_name in ("x", "y"):
+            axis_field = f"{field}.{axis_name}"
+            axis = _mapping(value.get(axis_name), axis_field, issues)
+            _unknown_fields(
+                axis,
+                {"kind", "id", "scale", "label"},
+                axis_field,
+                issues,
+                task_id=task_id,
+            )
+            _missing_fields(
+                axis,
+                {"kind", "id", "scale"},
+                axis_field,
+                issues,
+                task_id=task_id,
+            )
+            kind = axis.get("kind")
+            variable_id = axis.get("id")
+            scale = axis.get("scale")
+            valid = True
+            if kind not in {"direct", "derived"}:
+                valid = False
+            if not isinstance(variable_id, str) or not variable_id.strip():
+                valid = False
+            elif kind == "direct" and variable_id not in mapped:
+                valid = False
+            elif kind == "derived" and variable_id not in derived_ids:
+                valid = False
+            if scale not in {"linear", "log10"}:
+                valid = False
+            label = axis.get("label")
+            if label is not None and (
+                not isinstance(label, str) or not label.strip() or len(label) > 120
+            ):
+                valid = False
+            if not valid:
+                issues.append(
+                    _issue(
+                        "E317",
+                        "error",
+                        "二维坐标轴必须引用已映射分析物或已审核派生变量，并使用 linear/log10。",
+                        field=axis_field,
+                        task_id=task_id,
+                    )
+                )
+                continue
+            normalized_axis = {
+                "kind": kind,
+                "id": variable_id,
+                "scale": scale,
+            }
+            if label is not None:
+                normalized_axis["label"] = label.strip()
+            normalized[axis_name] = normalized_axis
     return normalized
 
 
 def _validate_tasks(
     raw: Any,
     mapped: set[str],
+    derived_ids: set[str],
     has_group_column: bool,
     preset_names: Mapping[str, str],
     issues: list[dict[str, str]],
@@ -1580,6 +1699,7 @@ def _validate_tasks(
                 diagram,
                 task_label,
                 mapped,
+                derived_ids,
                 has_group_column,
                 issues,
             )
@@ -1699,6 +1819,11 @@ def validate_recipe(document: Any) -> dict[str, Any]:
     normalized_tasks = _validate_tasks(
         root.get("tasks"),
         mapped,
+        {
+            str(item["id"])
+            for item in normalized_derived
+            if isinstance(item.get("id"), str)
+        },
         normalized_columns.get("group") is not None,
         preset_names,
         issues,
@@ -1776,7 +1901,7 @@ def load_recipe(path: str | Path) -> dict[str, Any]:
         )
         return _result(recipe=None, issues=issues)
     try:
-        document = yaml.safe_load(text)
+        document = yaml.load(text, Loader=_UniqueKeySafeLoader)
     except yaml.composer.ComposerError as exc:
         multiple_documents = "expected a single document" in str(exc)
         issues.append(

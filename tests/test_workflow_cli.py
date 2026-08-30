@@ -218,7 +218,7 @@ def test_version_works_without_site_packages() -> None:
     report = parse_stdout(result)
     assert result.returncode == 0
     assert report["status"] == "ready"
-    assert report["result"]["tool_version"] == "0.6.0"
+    assert report["result"]["tool_version"] == "0.7.0-rc1"
 
 
 def test_self_check_is_machine_readable_and_private_by_default() -> None:
@@ -308,9 +308,9 @@ def test_blocked_input_still_writes_reviewable_plan(tmp_path: Path) -> None:
     assert plan_path.is_file()
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
     assert plan["status"] == "blocked"
-    assert plan["input"]["filename"] == "input.csv"
+    assert "filename" not in plan["input"]
     issue = next(item for item in result["issues"] if item["code"] == "E106")
-    assert issue["message"] == "未找到输入文件：input.csv。"
+    assert "input.csv" not in issue["message"]
     assert "input.file" in issue["suggested_action"]
     assert str(tmp_path.resolve()) not in plan_path.read_text(encoding="utf-8")
 
@@ -389,6 +389,10 @@ def test_spider_recipe_preserves_three_reviewed_oxide_conversions(
     assert {
         item["element"] for item in report["details"]["oxide_conversions"]
     } == {"K", "P", "Ti"}
+    assert all(
+        "source_column" not in item
+        for item in report["details"]["oxide_conversions"]
+    )
     assert (
         report["details"]["reference_assets"][0]["doi"]
         == "10.1144/GSL.SP.1989.042.01.19"

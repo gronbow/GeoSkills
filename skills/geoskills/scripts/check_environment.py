@@ -17,6 +17,7 @@ RUNTIME_MODULES = {
     "matplotlib": "figure generation and export",
     "PIL": "raster figure validation",
     "openpyxl": "Excel .xlsx input",
+    "defusedxml": "safe preflight inspection of Excel XML parts",
     "yaml": "versioned YAML plotting recipes",
 }
 DEVELOPMENT_MODULES = {

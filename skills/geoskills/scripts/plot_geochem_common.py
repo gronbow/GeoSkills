@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,21 +12,35 @@ import numpy as np
 import pandas as pd
 
 from geoskills_core.errors import PlottingError
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     FORMATS,
     GROUP_COLORS,
     MARKERS,
-    publication_style,
 )
+from geoskills_core.style_contract import validate_style_contract
 
 
-SUBSCRIPT_TRANSLATION = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+def chemical_formula_label(analyte: str) -> str:
+    """Return editable MathText chemistry without fragile Unicode glyphs."""
+
+    tokens: list[str] = []
+    for token in re.findall(r"[A-Za-z]+|\d+|[+-]|.", str(analyte)):
+        if token.isdigit():
+            tokens.append(f"_{{{token}}}")
+        elif token in {"+", "-"}:
+            tokens.append(f"^{{{token}}}")
+        elif token == "*":
+            tokens.append(r"\ast")
+        else:
+            tokens.append(token)
+    return r"$\mathrm{" + "".join(tokens) + "}$"
 
 
 def analyte_label(analyte: str, unit: str) -> str:
-    """Return a compact final-size axis label with Unicode subscripts."""
-    formula = analyte.translate(SUBSCRIPT_TRANSLATION)
-    return f"{formula} ({unit})"
+    """Return a compact final-size axis label with editable subscripts."""
+
+    return f"{chemical_formula_label(analyte)} ({unit})"
 
 
 def clean_linear_limits(
@@ -187,10 +202,12 @@ def validate_export_parameters(
     dpi: int,
 ) -> None:
     """Validate final-size and raster export parameters."""
-    if not 50 <= width_mm <= 400 or not 50 <= height_mm <= 400:
-        raise PlottingError("图宽和图高必须在 50–400 mm 之间。")
-    if not 72 <= dpi <= 1200:
-        raise PlottingError("PNG/TIFF 分辨率必须在 72–1200 dpi 之间。")
+    try:
+        validate_style_contract(width_mm, height_mm, dpi)
+    except (TypeError, ValueError) as exc:
+        raise PlottingError(
+            "图件尺寸、DPI 或栅格像素总量超过 GeoSkills 固定安全预算。"
+        ) from exc
 
 
 def output_targets(
@@ -226,22 +243,7 @@ def save_figure_bundle(
     dpi: int,
 ) -> None:
     """Save vector and raster outputs from the same Matplotlib figure."""
-    with publication_style(
-        overrides={
-            "font.sans-serif": [
-                "DejaVu Sans",
-                "Arial",
-                "Liberation Sans",
-            ]
-        }
-    ):
-        for path in paths:
-            options: dict[str, Any] = {"facecolor": "white"}
-            if path.suffix.lower() in {".png", ".tiff"}:
-                options["dpi"] = dpi
-            if path.suffix.lower() == ".tiff":
-                options["pil_kwargs"] = {"compression": "tiff_lzw"}
-            figure.savefig(path, **options)
+    save_figure_files(figure, paths, dpi=dpi)
 
 
 def shareable_file_record(path: Path) -> dict[str, Any]:

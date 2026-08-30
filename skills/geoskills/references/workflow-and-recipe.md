@@ -1,6 +1,6 @@
-# GeoSkills v0.6 配方与安全运行流程
+# GeoSkills v0.7 候选版配方与安全运行流程
 
-本页解释统一工作流。v0.6 保留 REE、蛛网图、Harker 和 TAS，并加入显式无水100%数据基准与经复核的 K2O-SiO2 图；所有图仍在同一套可检查、可重复流程中运行。
+本页解释统一工作流。v0.7 候选版保留五类已发布图解，并增加不带分类边界的通用二维坐标图；所有图仍在同一套可检查、可重复流程中运行。
 
 ## 先理解三个词
 
@@ -43,6 +43,7 @@ python3 skills/geoskills/scripts/geoskills.py run my-work/recipe.yaml --plan my-
 统一命令只在标准输出写一条 JSON，方便 Codex、DeepSeek 或其他本地 Agent 稳定读取：
 
 - `version`：显示工具版本和图解接口版本；
+- `capabilities`：列出当前已审核图解及固定参数合同；
 - `self-check`：检查运行依赖；默认不显示本地可执行文件路径；
 - `self-check --dev`：额外检查测试依赖；
 - `self-check --include-paths`：仅在明确需要排错时显示本地 Python 路径；
@@ -236,6 +237,36 @@ tasks:
 
 该任务还要求配方顶层存在经确认的 `data_basis`，且氧化物列表至少包含 `SiO2` 和 `K2O`。文献边界不外推；`SiO2 = 48–63 wt%` 之外的可见样品只绘点、不自动分类。
 
+通用二维图（坐标图，不做分类）：
+
+```yaml
+derived_variables:
+  - id: Nb_Y
+    operation: ratio
+    numerator: Nb
+    denominator: Y
+    input_unit: ppm
+
+tasks:
+  - id: xy-main
+    diagram: xy
+    stem: figure-xy
+    preset: publication-double-column
+    parameters:
+      x: {kind: direct, id: SiO2, scale: linear}
+      y: {kind: derived, id: Nb_Y, scale: log10}
+      groups: all
+    confirmations: {}
+```
+
+`direct` 必须引用已映射分析物；`derived` 必须引用配方顶层已审核的同单位比值。X、Y 可分别使用 `linear` 或 `log10`。该图只显示坐标关系，不附加 Zr/TiO2-Nb/Y、构造环境或其他未经专业复核的分类边界。
+
+## 输入资源预算
+
+为防止损坏或恶意文件耗尽本机内存，GeoSkills 会完整拒绝超过固定预算的表，而不会静默抽样：最多 100,000 行、2,048 列、2,000,000 单元格，单字段最多 65,536 字符。XLSX 还会在读取前检查压缩包结构、解压体积、压缩比和危险 XML。
+
+进入绘图前还会估算图中数据点、分组和独立绘图对象：每个任务最多 100,000 个数据点、64 个分组、2,000 个独立绘图对象。超限任务会在计划阶段阻断，并要求按科学问题拆成多幅完整图件；GeoSkills 不会自动抽样、合并分组或删去变量。
+
 ## 图件预设
 
 内置预设：
@@ -263,7 +294,8 @@ presets:
 
 - 输出 SVG、PDF、TIFF、PNG、JSON 报告和中文 QA 摘要；
 - 不保留逐样品绘图数据 CSV；
-- 报告不含绝对路径或源数据值。
+- 计划和报告不含绝对路径、原始文件名、工作表名、源列名或源数据值；
+- 明确选择的分组值在计划和报告中只保留数量与摘要哈希；图件中的分组图例仍属于可见科研标注，必须在确认导出前审核其公开性。
 
 `local-reproducible`：
 

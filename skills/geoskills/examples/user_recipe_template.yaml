@@ -1,0 +1,47 @@
+# 安全起点：把占位内容替换为自己的文件和列名。
+# 所有确认项默认关闭。请在实际核对后逐项改为 true。
+schema_version: geoskills.recipe/v1
+
+input:
+  file: your-data.csv
+  sheet: null
+  layout: row-per-sample
+
+columns:
+  sample_id: Sample
+  group: null
+  mapping:
+    SiO2: SiO2_wt%
+    MgO: MgO_wt%
+  units:
+    major_oxides: wt%
+    trace_elements: ppm
+
+output:
+  directory: generated/my-geoskills-output
+  report_profile: shareable
+
+presets: {}
+
+confirmations:
+  input_structure_reviewed: false
+  column_mapping_reviewed: false
+  units_reviewed: false
+  plotted_data_export_reviewed: false
+
+tasks:
+  - id: xy-main
+    diagram: xy
+    stem: figure-xy
+    preset: review-preview
+    parameters:
+      x:
+        kind: direct
+        id: SiO2
+        scale: linear
+      y:
+        kind: direct
+        id: MgO
+        scale: linear
+      groups: all
+    confirmations: {}

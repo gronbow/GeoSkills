@@ -86,9 +86,11 @@ class JsonArgumentParser(argparse.ArgumentParser):
 def build_parser() -> argparse.ArgumentParser:
     parser = JsonArgumentParser(
         description="GeoSkills 本地地球化学绘图工作流。",
+        allow_abbrev=False,
     )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("version", help="显示工具与接口版本")
+    commands.add_parser("capabilities", help="列出已审核图解和固定参数合同")
 
     self_check = commands.add_parser(
         "self-check",
@@ -108,6 +110,7 @@ def build_parser() -> argparse.ArgumentParser:
     plan = commands.add_parser(
         "plan",
         help="检查配方和输入并保存可审核计划，不出图",
+        allow_abbrev=False,
     )
     plan.add_argument("recipe", type=Path, help="YAML 配方文件")
     plan.add_argument(
@@ -131,6 +134,7 @@ def build_parser() -> argparse.ArgumentParser:
     run = commands.add_parser(
         "run",
         help="复核计划未变化后，一次性生成完整输出",
+        allow_abbrev=False,
     )
     run.add_argument("recipe", type=Path, help="YAML 配方文件")
     run.add_argument(
@@ -154,6 +158,21 @@ def command_version() -> tuple[dict[str, Any], int]:
         result={
             "tool_version": TOOL_VERSION,
             "diagram_api_version": DIAGRAM_API_VERSION,
+        },
+    )
+    return document, 0
+
+
+def command_capabilities() -> tuple[dict[str, Any], int]:
+    from geoskills_core.registry import diagram_ids, registry_snapshot
+
+    document = envelope(
+        "capabilities",
+        "ready",
+        result={
+            "diagram_api_version": DIAGRAM_API_VERSION,
+            "diagram_ids": list(diagram_ids()),
+            "diagrams": registry_snapshot(),
         },
     )
     return document, 0
@@ -255,6 +274,8 @@ def main() -> int:
     try:
         if args.command == "version":
             document, code = command_version()
+        elif args.command == "capabilities":
+            document, code = command_capabilities()
         elif args.command == "self-check":
             document, code = command_self_check(
                 dev=args.dev,

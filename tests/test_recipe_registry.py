@@ -120,9 +120,13 @@ def issue_codes(result: dict) -> set[str]:
 
 
 def test_version_and_registry_are_fixed_and_json_ready() -> None:
-    assert VERSION == "0.6.0"
-    assert diagram_ids() == ("ree", "spider", "harker", "tas", "k2o-sio2")
-    assert set(DIAGRAMS) == {"ree", "spider", "harker", "tas", "k2o-sio2"}
+    assert VERSION == "0.7.0-rc1"
+    assert diagram_ids() == (
+        "ree", "spider", "harker", "tas", "k2o-sio2", "xy"
+    )
+    assert set(DIAGRAMS) == {
+        "ree", "spider", "harker", "tas", "k2o-sio2", "xy"
+    }
     assert BUILTIN_STYLE_PRESETS == (
         "publication-double-column",
         "review-preview",
@@ -415,6 +419,7 @@ def test_excel_sheet_name_preserves_significant_edge_spaces() -> None:
         "geoskills_ree_workflow.yaml",
         "geoskills_spider_workflow.yaml",
         "geoskills_major_workflow.yaml",
+        "geoskills_xy_workflow.yaml",
     ],
 )
 def test_bundled_workflow_recipes_remain_valid(filename: str) -> None:
@@ -423,6 +428,22 @@ def test_bundled_workflow_recipes_remain_valid(filename: str) -> None:
     result = load_recipe(path)
 
     assert result["status"] == "ready"
+
+
+def test_user_recipe_template_starts_with_all_confirmations_disabled() -> None:
+    path = (
+        ROOT
+        / "skills"
+        / "geoskills"
+        / "examples"
+        / "user_recipe_template.yaml"
+    )
+
+    result = load_recipe(path)
+
+    assert result["status"] == "needs_review"
+    assert result["recipe"] is not None
+    assert set(result["recipe"]["confirmations"].values()) == {False}
 
 
 def test_yaml_loader_is_safe_single_document_and_size_limited(

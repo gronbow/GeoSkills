@@ -1,0 +1,64 @@
+# 本示例中的 true 只适用于同目录的公开合成数据。
+# 替换为自己的数据后，请从 user_recipe_template.yaml 开始，
+# 完成人工核对后再逐项确认；这不表示允许上传数据。
+schema_version: geoskills.recipe/v1
+
+input:
+  file: synthetic_major_element_data.csv
+  sheet: null
+  layout: row-per-sample
+
+columns:
+  sample_id: Sample
+  group: Group
+  mapping:
+    SiO2: SiO2_wt%
+    MgO: MgO_wt%
+    Na2O: Na2O_wt%
+    K2O: K2O_wt%
+  units:
+    major_oxides: wt%
+    trace_elements: ppm
+
+derived_variables:
+  - id: K2O_Na2O
+    operation: ratio
+    numerator: K2O
+    denominator: Na2O
+    input_unit: wt%
+
+output:
+  directory: generated/geoskills-xy-workflow
+  report_profile: shareable
+
+presets:
+  journal-main:
+    extends: publication-double-column
+    style:
+      width_mm: 183
+      height_mm: 120
+      dpi: 600
+
+confirmations:
+  input_structure_reviewed: true
+  column_mapping_reviewed: true
+  units_reviewed: true
+  plotted_data_export_reviewed: true
+
+tasks:
+  - id: xy-main
+    diagram: xy
+    stem: figure-xy
+    preset: journal-main
+    parameters:
+      x:
+        kind: direct
+        id: SiO2
+        scale: linear
+      y:
+        kind: derived
+        id: K2O_Na2O
+        label: K2O/Na2O
+        scale: log10
+      groups: all
+    confirmations: {}
