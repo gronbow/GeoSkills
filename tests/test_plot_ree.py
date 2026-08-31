@@ -644,3 +644,48 @@ def test_transposed_published_layout_exports_figure(tmp_path: Path) -> None:
     assert report["plot"]["group_count"] == 2
     assert len(report["outputs"]) == 4
     assert Path(report["source_data"]["path"]).exists()
+
+
+def test_single_column_can_move_reference_note_out_of_canvas() -> None:
+    scripts = str(SKILL / "scripts")
+    sys.path.insert(0, scripts)
+    try:
+        from plot_ree import build_figure
+
+        normalized = pd.DataFrame(
+            {
+                "Sample": ["S1", "S2"],
+                "Group": ["A", "B"],
+                "La_N": [100.0, 80.0],
+                "Ce_N": [90.0, 70.0],
+                "Pr_N": [70.0, 55.0],
+            }
+        )
+        figure, plot_info = build_figure(
+            normalized,
+            "Sample",
+            "Group",
+            ["La", "Ce", "Pr"],
+            "Chondrite_SM89",
+            width_mm=89,
+            height_mm=75,
+            axes_frame="full",
+            legend_layout="inside-auto",
+            show_sample_ids=False,
+            show_reference_note=False,
+            style_preset="publication-single-column",
+        )
+
+        assert plot_info["reference_note_on_canvas"] is False
+        assert not any("Normalization:" in text.get_text() for text in figure.texts)
+        assert np.isclose(figure.get_size_inches()[0], 89 / 25.4)
+        figure.canvas.draw()
+        label_box = figure.axes[0].yaxis.label.get_window_extent(
+            figure.canvas.get_renderer()
+        )
+        assert label_box.x0 >= 0
+        assert label_box.x1 <= figure.bbox.width
+    finally:
+        if "plot_ree" in sys.modules:
+            sys.modules["plot_ree"].plt.close("all")
+        sys.path.remove(scripts)

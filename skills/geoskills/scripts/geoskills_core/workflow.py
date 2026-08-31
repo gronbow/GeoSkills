@@ -917,6 +917,7 @@ def _safe_plot_summary(
         "marker_repeated",
         "axes_frame",
         "legend_position",
+        "reference_note_on_canvas",
     }
     diagram_fields = {
         "ree": {

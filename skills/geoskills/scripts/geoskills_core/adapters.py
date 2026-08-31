@@ -27,6 +27,7 @@ from .validation import ColumnMapping, validate_column_mappings
 MAX_PLOT_POINTS = 100_000
 MAX_PLOT_GROUPS = 64
 MAX_PLOT_ARTISTS = 2_000
+_SPREADSHEET_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
 
 class AdapterError(GeoSkillsError):
@@ -48,6 +49,18 @@ class PreparedInput:
     quality: dict[str, Any]
     derived: dict[str, Any]
     basis: dict[str, Any]
+
+
+def _spreadsheet_formula_count(series: pd.Series) -> int:
+    """Count text labels which spreadsheet software may evaluate as formulae."""
+
+    def is_risky(value: object) -> bool:
+        if pd.isna(value):
+            return False
+        text = str(value).lstrip(" \u00a0")
+        return bool(text) and text.startswith(_SPREADSHEET_FORMULA_PREFIXES)
+
+    return int(series.map(is_risky).sum())
 
 
 def _plot_budget_issues(
@@ -349,6 +362,37 @@ def prepare_mapped_input(
             code="E416",
         ) from exc
 
+    formula_risk = {
+        "sample_id_count": _spreadsheet_formula_count(canonical["Sample"]),
+        "group_count": (
+            _spreadsheet_formula_count(canonical["Group"])
+            if "Group" in canonical.columns
+            else 0
+        ),
+    }
+    formula_risk["total_count"] = (
+        formula_risk["sample_id_count"] + formula_risk["group_count"]
+    )
+    if formula_risk["total_count"]:
+        quality["spreadsheet_formula_risk"] = formula_risk
+        if recipe["output"]["report_profile"] == "local-reproducible":
+            quality["issues"].append(
+                {
+                    "code": "E422",
+                    "severity": "error",
+                    "message": (
+                        "样品或分组文本可能被电子表格软件解释为公式；"
+                        "已阻止本地可复现 CSV 导出。"
+                    ),
+                    "field": "columns.sample_id/columns.group",
+                    "suggested_action": (
+                        "在数据副本中把相应标签改为不以 =、+、-、@、制表符"
+                        "或回车开头的纯文本，再重新生成计划。"
+                    ),
+                }
+            )
+            quality["status"] = "error"
+
     mapped_path = work_dir / "mapped_input.csv"
     canonical.to_csv(mapped_path, index=False)
     basis_path: Path | None = None
@@ -541,6 +585,34 @@ def inspect_task(
     )
     issues.extend(budget_issues)
     resource_blocked = bool(budget_issues)
+    layout_blocked = False
+    if task.get("style", {}).get("base_preset") == "publication-single-column":
+        if diagram == "spider" and len(parameters.get("elements", [])) > 14:
+            layout_blocked = True
+            issues.append(
+                {
+                    "code": "E423",
+                    "severity": "review",
+                    "message": "单栏蛛网图最多允许 14 个元素，以保证最终尺寸标签可读。",
+                    "field": "tasks.parameters.elements",
+                    "suggested_action": (
+                        "减少元素数量，或改用 publication-double-column。"
+                    ),
+                }
+            )
+        if diagram == "harker" and len(parameters.get("y", [])) > 2:
+            layout_blocked = True
+            issues.append(
+                {
+                    "code": "E424",
+                    "severity": "review",
+                    "message": "单栏 Harker 图最多允许 2 个面板，以保证最终尺寸可读。",
+                    "field": "tasks.parameters.y",
+                    "suggested_action": (
+                        "拆分 Harker 任务，或改用 publication-double-column。"
+                    ),
+                }
+            )
     requested: list[str] = []
     if diagram in {"ree", "spider"}:
         requested = [str(value) for value in parameters.get("elements", [])]
@@ -760,6 +832,7 @@ def inspect_task(
         or tas_blocked
         or k2o_blocked
         or resource_blocked
+        or layout_blocked
         or status != "ready"
     ):
         status = "blocked"
@@ -852,6 +925,7 @@ def run_task(
             grid_style=str(style.get("grid_style", "none")),
             show_sample_ids=bool(style.get("show_sample_ids", True)),
             group_legend_title="Group",
+            show_reference_note=bool(style.get("show_reference_note", True)),
         )
     if diagram == "spider":
         from plot_spider import plot_spider_path
@@ -868,6 +942,7 @@ def run_task(
             grid_style=str(style.get("grid_style", "none")),
             show_sample_ids=bool(style.get("show_sample_ids", True)),
             group_legend_title="Group",
+            show_reference_note=bool(style.get("show_reference_note", True)),
         )
     if diagram == "harker":
         from plot_harker import plot_harker_path
@@ -903,6 +978,7 @@ def run_task(
             width_mm=float(style["width_mm"]),
             height_mm=float(style["height_mm"]),
             legend_layout=str(style.get("legend_layout", "inside-auto")),
+            show_reference_note=bool(style.get("show_reference_note", True)),
         )
     if diagram == "k2o-sio2":
         from plot_k2o_sio2 import plot_k2o_sio2_path
@@ -916,6 +992,7 @@ def run_task(
             width_mm=float(style["width_mm"]),
             height_mm=float(style["height_mm"]),
             legend_layout=str(style.get("legend_layout", "inside-auto")),
+            show_reference_note=bool(style.get("show_reference_note", True)),
         )
     if diagram == "xy":
         from plot_xy import plot_xy_path

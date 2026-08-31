@@ -568,3 +568,43 @@ def test_execute_uses_one_snapshot_when_source_changes_after_copy(
     assert marker not in observed_canonical
     assert result["status"] == "ready"
     assert (tmp_path / "bundle" / "ree-1" / "figure-ree-1.svg").is_file()
+
+
+def test_local_reproducible_blocks_spreadsheet_formula_labels_without_leak(
+    tmp_path: Path,
+) -> None:
+    frame = pd.read_csv(EXAMPLES / "synthetic_ree_data.csv")
+    secret_formula = "=HYPERLINK(\"https://invalid.example\",\"private\")"
+    frame.loc[0, "Sample"] = secret_formula
+    frame.to_csv(tmp_path / "input.csv", index=False)
+    recipe = _ree_recipe()
+    recipe["output"]["report_profile"] = "local-reproducible"
+    recipe_path = _write_recipe(tmp_path, recipe)
+
+    result = workflow.build_plan(recipe_path)
+    payload = json.dumps(result, ensure_ascii=False)
+
+    assert result["status"] == "blocked"
+    assert "E422" in _issue_codes(result)
+    risk = result["plan"]["data_processing"]["quality"]["summary"][
+        "spreadsheet_formula_risk"
+    ]
+    assert risk == {"sample_id_count": 1, "group_count": 0, "total_count": 1}
+    assert secret_formula not in payload
+
+
+def test_shareable_profile_does_not_block_formula_like_sample_label(
+    tmp_path: Path,
+) -> None:
+    frame = pd.read_csv(EXAMPLES / "synthetic_ree_data.csv")
+    frame.loc[0, "Sample"] = "=1+1"
+    frame.to_csv(tmp_path / "input.csv", index=False)
+    recipe_path = _write_recipe(tmp_path, _ree_recipe())
+
+    result = workflow.build_plan(recipe_path)
+
+    assert result["status"] == "ready"
+    assert "E422" not in _issue_codes(result)
+    assert result["plan"]["data_processing"]["quality"]["summary"][
+        "spreadsheet_formula_risk"
+    ]["total_count"] == 1

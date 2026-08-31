@@ -124,6 +124,7 @@ def plot_spider_path(
     grid_style: str = "none",
     show_sample_ids: bool = True,
     group_legend_title: str = "Group",
+    show_reference_note: bool = True,
     overwrite: bool = False,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> dict[str, Any]:
@@ -255,6 +256,7 @@ def plot_spider_path(
             x_tick_stagger=True,
             show_sample_ids=show_sample_ids,
             group_legend_title=group_legend_title,
+            show_reference_note=show_reference_note,
             style_preset=style_preset,
         )
 

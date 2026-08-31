@@ -1,8 +1,16 @@
 # GeoSkills
 
+[![Tests](https://github.com/gronbow/GeoSkills/actions/workflows/tests.yml/badge.svg)](https://github.com/gronbow/GeoSkills/actions/workflows/tests.yml)
+[![Dependency audit](https://github.com/gronbow/GeoSkills/actions/workflows/dependency-audit.yml/badge.svg)](https://github.com/gronbow/GeoSkills/actions/workflows/dependency-audit.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本仍为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)。本分支是尚未发布的 v0.7.0 候选版：增加通用二维坐标图、安全输入预算和更严格的可分享图件隐私保护。
+当前正式版本仍为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)。本分支是尚未发布的 v0.8.0 候选版：在 v0.7 通用二维图与安全输入基础上，增加单栏投稿模式、CSV 公式注入保护、依赖漏洞审计和更清晰的项目首页。
+
+![GeoSkills 六类合成数据图件预览](docs/images/geoskills-gallery.png)
+
+以上图件全部由仓库内公开合成数据生成，不含真实样品或未发表数据。
 
 ## 三步开始（普通用户）
 
@@ -11,6 +19,19 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 3. 先审核 GeoSkills 给出的数据映射和计划，确认无误后再批准出图。
 
 默认的 `shareable` 输出不会保留绘图数据 CSV，也不会把样品编号写进 REE、蛛网图或通用二维图。所有运算都在本地完成。
+
+## 六类图件一览
+
+| 图件 | 主要用途 | 投稿尺寸 |
+|---|---|---|
+| REE 配分图 | C1 球粒陨石标准化 La–Lu 模式 | 单栏或双栏 |
+| 微量元素蛛网图 | 原始地幔或 N-MORB 标准化多元素模式 | 双栏；不超过 14 个元素时可单栏 |
+| Harker 图解 | 主量/微量元素随 X 变量的协变 | 双栏；不超过 2 个面板时可单栏 |
+| TAS 图解 | 已确认火山岩的化学分类 | 单栏或双栏 |
+| K2O-SiO2 图解 | 已确认火山岩的岩浆系列比较 | 单栏或双栏 |
+| 通用二维图 | 直接变量或已审核同单位比值的坐标关系 | 单栏或双栏 |
+
+`publication-single-column` 为 89 × 75 mm、600 dpi。单栏图把长文献说明保留在 JSON/QA 报告中，不挤占图内数据区域；完整四边框和自动避让图例仍然保留。
 
 ## 当前可以做什么
 
@@ -36,8 +57,12 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 在出图前检查表格、像素、数据点、分组和独立绘图对象的固定资源上限；超限时完整拒绝，不静默抽样或合并；
 - 输出机器可读的 JSON 报告和中文 QA 摘要；
 - 可在 `local-reproducible` 模式保留实际绘图数据 CSV，或在 `shareable` 模式省略该敏感文件；
+- 在导出 `local-reproducible` CSV 前检查样品/分组文本，阻止可能被电子表格软件解释为公式的标签；
 - 统一工作流默认使用完整四边框，并自动安排图例以尽量避免遮挡数据或超出图幅；
 - 全程在本地处理数据，绘图脚本不请求网络服务。
+
+安全问题请按 [Security policy](SECURITY.md) 中的私密报告流程处理，不要在公开 issue 中附加真实数据或漏洞细节。
+本候选版的已完成改进、验收证据和后续优先级见 [v0.8 综合审查](docs/audits/v0.8-candidate-audit.md)。
 
 ## 安装到 Codex
 

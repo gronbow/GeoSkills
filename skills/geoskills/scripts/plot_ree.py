@@ -200,6 +200,7 @@ def build_figure(
     grid_style: str = "none",
     y_label: str = "Sample / C1 chondrite",
     reference_note: str | None = None,
+    show_reference_note: bool = True,
     x_tick_labelsize: float | None = None,
     x_tick_stagger: bool = False,
     show_sample_ids: bool = True,
@@ -500,9 +501,12 @@ def build_figure(
         if legend_layout == "inside-auto" or not legend_needed
         else 0.73
     )
-    plot_bottom = 0.19 if x_tick_stagger else 0.16
+    plot_left = 0.18 if width_mm <= 100 else 0.095
+    plot_bottom = (
+        0.19 if x_tick_stagger else 0.16
+    ) if show_reference_note else (0.14 if x_tick_stagger else 0.11)
     fig.subplots_adjust(
-        left=0.095,
+        left=plot_left,
         right=plot_right,
         bottom=plot_bottom,
         top=0.90 if title else 0.95,
@@ -556,7 +560,7 @@ def build_figure(
             inside_legends = []
         if not inside_legends:
             fig.subplots_adjust(
-                left=0.095,
+                left=plot_left,
                 right=0.73,
                 bottom=plot_bottom,
                 top=0.90 if title else 0.95,
@@ -577,16 +581,18 @@ def build_figure(
         reference_note += "; dashed line = unity."
     else:
         reference_note += "; limits adapt and round to clean bounds."
-    fig.text(
-        0.095,
-        0.045,
-        reference_note,
-        fontsize=5.8,
-        color="#4D4D4D",
-        ha="left",
-    )
+    if show_reference_note:
+        fig.text(
+            plot_left,
+            0.045,
+            reference_note,
+            fontsize=5.8,
+            color="#4D4D4D",
+            ha="left",
+        )
     return fig, {
         "normalization_id": reference_id,
+        "reference_note_on_canvas": show_reference_note,
         "y_limits": {
             "lower": y_lower,
             "upper": y_upper,
@@ -706,6 +712,7 @@ def plot_path(
     grid_style: str = "none",
     show_sample_ids: bool = True,
     group_legend_title: str = "Group",
+    show_reference_note: bool = True,
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
@@ -801,6 +808,7 @@ def plot_path(
             grid_style=grid_style,
             show_sample_ids=show_sample_ids,
             group_legend_title=group_legend_title,
+            show_reference_note=show_reference_note,
             style_preset=style_preset,
         )
 

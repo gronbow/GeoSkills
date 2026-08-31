@@ -2,6 +2,14 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
+## v0.8.0-rc1 — unreleased candidate
+
+- Added an 89 × 75 mm, 600 dpi `publication-single-column` preset; long reference notes move from the canvas into the existing report/QA provenance trail.
+- Added plan-time density gates for single-column spider diagrams and Harker grids so unreadable final-size layouts fail before rendering.
+- Added spreadsheet-formula injection detection for sample/group labels and block sensitive `local-reproducible` CSV export when unsafe labels are present.
+- Added automated dependency vulnerability auditing and a repository security-reporting policy.
+- Added a synthetic-data figure gallery and a clearer capability matrix for the GitHub project page.
+
 ## v0.7.0-rc1 — unreleased candidate
 
 - Added a coordinate-only generic bivariate diagram using direct mapped analytes or previously reviewed same-unit ratios, with independent linear/log10 axes and grouped styling.
