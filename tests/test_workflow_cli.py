@@ -218,7 +218,7 @@ def test_version_works_without_site_packages() -> None:
     report = parse_stdout(result)
     assert result.returncode == 0
     assert report["status"] == "ready"
-    assert report["result"]["tool_version"] == "0.8.0-rc1"
+    assert report["result"]["tool_version"] == "0.8.0"
 
 
 def test_self_check_is_machine_readable_and_private_by_default() -> None:

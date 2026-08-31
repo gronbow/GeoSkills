@@ -2,15 +2,13 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
-## v0.8.0-rc1 — unreleased candidate
+## v0.8.0 — 2026-08-31
 
 - Added an 89 × 75 mm, 600 dpi `publication-single-column` preset; long reference notes move from the canvas into the existing report/QA provenance trail.
 - Added plan-time density gates for single-column spider diagrams and Harker grids so unreadable final-size layouts fail before rendering.
 - Added spreadsheet-formula injection detection for sample/group labels and block sensitive `local-reproducible` CSV export when unsafe labels are present.
 - Added automated dependency vulnerability auditing and a repository security-reporting policy.
 - Added a synthetic-data figure gallery and a clearer capability matrix for the GitHub project page.
-
-## v0.7.0-rc1 — unreleased candidate
 
 - Added a coordinate-only generic bivariate diagram using direct mapped analytes or previously reviewed same-unit ratios, with independent linear/log10 axes and grouped styling.
 - Kept Zr/TiO2-Nb/Y classification boundaries out of scope; no unreviewed scientific field geometry is bundled or implied.
@@ -24,7 +22,7 @@ This file records the user-visible changes in each public GeoSkills release.
 - Added a runnable XY demo and a user recipe template whose confirmation gates all start disabled.
 - Unified figure fonts, improved dense spider tick labels, exported RGB LZW TIFF files, and clarified that automated QA is not final scientific or visual approval.
 - Pinned GitHub Actions to reviewed commit SHAs and added Dependabot configuration.
-- This candidate has not been merged, tagged, or released.
+- Validated the release with 283 passing automated tests (1 skipped), Skill package validation, dependency vulnerability auditing, 12 shareable end-to-end output bundles, and Ubuntu/Windows CI on Python 3.11 and 3.12.
 
 ## v0.6.0 — 2026-08-10
 
