@@ -37,6 +37,8 @@ def test_runtime_environment_is_ready_without_local_paths() -> None:
     assert report["missing_modules"] == []
     assert "pytest" not in report["modules"]
     assert "yaml" in report["modules"]
+    assert "defusedxml" in report["modules"]
+    assert report["modules"]["defusedxml"]["version"]
     assert report["modules"]["PIL"]["version"]
     assert "python_executable" not in report
 

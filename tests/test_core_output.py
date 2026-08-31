@@ -314,6 +314,47 @@ def test_figure_and_reports_commit_as_one_shareable_bundle(
     assert str(tmp_path) not in summary
 
 
+def test_tiff_export_is_rgb_lzw_and_preserves_requested_dpi(
+    tmp_path: Path,
+) -> None:
+    from PIL import Image
+
+    output_dir = tmp_path / "tiff-output"
+    figure, axis = plt.subplots(figsize=(2, 1.5))
+    axis.plot([1, 2], [3, 4])
+    try:
+        with AtomicBundle(output_dir) as bundle:
+            stage_figure_outputs(
+                bundle,
+                figure,
+                "test_plot",
+                formats=("tiff",),
+                dpi=180,
+            )
+            bundle.commit()
+    finally:
+        plt.close(figure)
+
+    with Image.open(output_dir / "test_plot.tiff") as image:
+        assert image.mode == "RGB"
+        assert image.tag_v2.get(259) == 5
+        assert image.info["dpi"] == (180.0, 180.0)
+
+
+def test_ready_qa_wording_requires_final_visual_and_scientific_review() -> None:
+    report = build_report(
+        operation="ree_plot",
+        status="ready",
+        review_required=False,
+    )
+
+    summary = render_qa_markdown(report)
+
+    assert "技术生成完成" in summary
+    assert "最终尺寸" in summary
+    assert "视觉与科学审核" in summary
+
+
 def test_shareable_report_rejects_paths_and_source_values(
     tmp_path: Path,
 ) -> None:
@@ -368,6 +409,24 @@ def test_shareable_report_accepts_input_hash_and_size() -> None:
 
     assert report["source"]["file_sha256"] == "a" * 64
     assert report["source"]["size_bytes"] == 123
+    assert "filename" not in report["source"]
+
+
+def test_shareable_report_omits_private_filename_and_sheet() -> None:
+    report = build_report(
+        operation="workflow_plan",
+        status="ready",
+        source={
+            "filename": "PROJECT-ALPHA-sample-001.xlsx",
+            "sheet": "PRIVATE-LOCALITY-X",
+            "file_sha256": "b" * 64,
+            "format": ".xlsx",
+        },
+    )
+
+    encoded = json.dumps(report, ensure_ascii=False)
+    assert "PROJECT-ALPHA" not in encoded
+    assert "PRIVATE-LOCALITY-X" not in encoded
 
 
 def test_markdown_escapes_table_control_characters() -> None:

@@ -22,6 +22,7 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import MultipleLocator
 
 from geoskills_core.errors import PlottingError
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     GROUP_COLORS,
     MARKERS,
@@ -43,7 +44,6 @@ from plot_geochem_common import (
     output_targets,
     resolve_analyte_list,
     resolve_analyte_selection,
-    save_figure_bundle,
     shareable_file_record,
     validate_export_parameters,
 )
@@ -185,16 +185,7 @@ def add_shared_group_legend(
     }
 
 
-@publication_styled(
-    overrides={
-        "font.sans-serif": [
-            "DejaVu Sans",
-            "Arial",
-            "Liberation Sans",
-        ]
-    },
-    preset_parameter="style_preset",
-)
+@publication_styled(preset_parameter="style_preset")
 def build_harker_figure(
     frame: pd.DataFrame,
     sample_column: str,
@@ -575,7 +566,7 @@ def plot_harker_path(
             style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        save_figure_bundle(figure, figure_paths, dpi)
+        save_figure_files(figure, figure_paths, dpi=dpi)
         source_columns = [sample_column]
         if group_column is not None:
             source_columns.append(group_column)

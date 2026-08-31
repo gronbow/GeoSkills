@@ -46,3 +46,25 @@ def test_plot_modules_do_not_mutate_global_rcparams_at_import() -> None:
     ):
         source = (SCRIPTS / filename).read_text(encoding="utf-8")
         assert "plt.rcParams[" not in source
+
+
+def test_all_plotters_use_one_central_font_stack_without_local_overrides() -> None:
+    from geoskills_core.plotting import (
+        PUBLICATION_DOUBLE_COLUMN,
+        SANS_SERIF_FONT_STACK,
+        STYLE_PRESETS,
+    )
+
+    assert tuple(
+        STYLE_PRESETS[PUBLICATION_DOUBLE_COLUMN]["font.sans-serif"]
+    ) == SANS_SERIF_FONT_STACK
+    assert SANS_SERIF_FONT_STACK[:2] == ("Arial", "Helvetica")
+    for filename in (
+        "plot_ree.py",
+        "plot_spider.py",
+        "plot_harker.py",
+        "plot_tas.py",
+        "plot_k2o_sio2.py",
+    ):
+        source = (SCRIPTS / filename).read_text(encoding="utf-8")
+        assert '"font.sans-serif"' not in source

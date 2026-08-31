@@ -39,6 +39,13 @@ GROUP_COLORS = (
 MARKERS = ("o", "s", "^", "D", "v", "P", "X", "<", ">", "h", "p", "*")
 LINE_STYLES = ("-", "--", "-.", ":")
 FORMATS = ("svg", "pdf", "tiff", "png")
+SANS_SERIF_FONT_STACK = (
+    "Arial",
+    "Helvetica",
+    "DejaVu Sans",
+    "Liberation Sans",
+    "sans-serif",
+)
 
 PUBLICATION_DOUBLE_COLUMN = "publication-double-column"
 REVIEW_PREVIEW = "review-preview"
@@ -46,7 +53,7 @@ REVIEW_PREVIEW = "review-preview"
 _PUBLICATION_DOUBLE_COLUMN_RCPARAMS: Mapping[str, Any] = MappingProxyType(
     {
         "font.family": "sans-serif",
-        "font.sans-serif": ["Arial", "DejaVu Sans", "Liberation Sans"],
+        "font.sans-serif": list(SANS_SERIF_FONT_STACK),
         "font.size": 7.0,
         "axes.labelsize": 7.0,
         "axes.linewidth": 0.7,
@@ -64,6 +71,10 @@ _PUBLICATION_DOUBLE_COLUMN_RCPARAMS: Mapping[str, Any] = MappingProxyType(
         "figure.facecolor": "white",
         "svg.fonttype": "none",
         "pdf.fonttype": 42,
+        "mathtext.fontset": "custom",
+        "mathtext.rm": "Arial",
+        "mathtext.it": "Arial:italic",
+        "mathtext.bf": "Arial:bold",
     }
 )
 

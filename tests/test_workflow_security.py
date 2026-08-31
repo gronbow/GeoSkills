@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import pandas as pd
 import yaml
 
 
@@ -116,6 +117,28 @@ def _issue_codes(result: dict[str, Any]) -> set[str]:
     return {str(item["code"]) for item in result.get("issues", [])}
 
 
+def _write_ree_rows(
+    path: Path,
+    *,
+    row_count: int,
+    unique_groups: int = 1,
+) -> None:
+    frame = pd.DataFrame(
+        {
+            "Sample": [f"sample-{index + 1}" for index in range(row_count)],
+            "Group": [
+                f"group-{(index % unique_groups) + 1}"
+                for index in range(row_count)
+            ],
+            **{
+                f"{element}_ppm": [float(index + 1)] * row_count
+                for index, element in enumerate(REE_ELEMENTS)
+            },
+        }
+    )
+    frame.to_csv(path, index=False)
+
+
 def test_output_directory_cannot_be_recipe_root(tmp_path: Path) -> None:
     shutil.copyfile(EXAMPLES / "synthetic_ree_data.csv", tmp_path / "input.csv")
     recipe_path = _write_recipe(
@@ -130,6 +153,36 @@ def test_output_directory_cannot_be_recipe_root(tmp_path: Path) -> None:
     assert "E307" in _issue_codes(result)
     assert not plan_path.exists()
     assert (tmp_path / "input.csv").is_file()
+
+
+def test_plan_blocks_excessive_pattern_artists_without_sampling(
+    tmp_path: Path,
+) -> None:
+    _write_ree_rows(tmp_path / "input.csv", row_count=2_001)
+    recipe_path = _write_recipe(tmp_path, _ree_recipe())
+
+    result = create_plan(recipe_path, tmp_path / "plan.json")
+
+    assert result["status"] == "blocked"
+    assert "E424" in _issue_codes(result)
+    assert not (tmp_path / "bundle").exists()
+
+
+def test_plan_blocks_excessive_groups_without_merging(
+    tmp_path: Path,
+) -> None:
+    _write_ree_rows(
+        tmp_path / "input.csv",
+        row_count=65,
+        unique_groups=65,
+    )
+    recipe_path = _write_recipe(tmp_path, _ree_recipe())
+
+    result = create_plan(recipe_path, tmp_path / "plan.json")
+
+    assert result["status"] == "blocked"
+    assert "E423" in _issue_codes(result)
+    assert not (tmp_path / "bundle").exists()
 
 
 def test_input_inside_output_is_blocked_without_touching_source(

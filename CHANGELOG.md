@@ -2,6 +2,22 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
+## v0.7.0-rc1 — unreleased candidate
+
+- Added a coordinate-only generic bivariate diagram using direct mapped analytes or previously reviewed same-unit ratios, with independent linear/log10 axes and grouped styling.
+- Kept Zr/TiO2-Nb/Y classification boundaries out of scope; no unreviewed scientific field geometry is bundled or implied.
+- Prevented shareable REE and spider figures from rendering sample identifiers while retaining group-level visual encoding.
+- Removed source filenames, worksheet names, source-column labels, and selected-group values from shareable plans and reports while preserving deterministic stale-plan detection.
+- Rejected duplicate YAML keys so a later key cannot silently override a scientific confirmation.
+- Added fixed CSV/TXT/XLSX table budgets and pre-parse XLSX ZIP/XML defenses against resource-exhaustion input.
+- Added a fixed raster-pixel budget so unsafe dimension/DPI combinations fail during recipe validation.
+- Added pre-plot limits for data points, groups, and independent vector artists; over-budget tasks fail closed instead of being silently sampled or merged.
+- Added a machine-readable `capabilities` command and disabled abbreviated CLI options.
+- Added a runnable XY demo and a user recipe template whose confirmation gates all start disabled.
+- Unified figure fonts, improved dense spider tick labels, exported RGB LZW TIFF files, and clarified that automated QA is not final scientific or visual approval.
+- Pinned GitHub Actions to reviewed commit SHAs and added Dependabot configuration.
+- This candidate has not been merged, tagged, or released.
+
 ## v0.6.0 — 2026-08-10
 
 - Added an explicit, non-destructive anhydrous 100% data-basis layer. The selected oxide list is user-reviewed, source columns remain unchanged, volatile/LOI/Total columns are excluded, and invalid rows remain missing.

@@ -16,6 +16,10 @@ import tempfile
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+from PIL import Image
+
+from .plotting import publication_style
+
 
 class BundleExportError(RuntimeError):
     """Raised when a complete output bundle cannot be exported safely."""
@@ -410,17 +414,70 @@ def stage_figure_outputs(
             "不支持以下图件格式：" + ", ".join(unsupported) + "。"
         )
 
-    paths: list[Path] = []
-    for extension in normalised_formats:
-        path = bundle.stage_path(f"{clean_stem}.{extension}")
-        options: dict[str, Any] = {"facecolor": "white"}
-        if extension in {"png", "tiff"}:
-            options["dpi"] = int(dpi)
-        if extension == "tiff":
-            options["pil_kwargs"] = {"compression": "tiff_lzw"}
-        figure.savefig(path, **options)
-        paths.append(path)
+    paths = [
+        bundle.stage_path(f"{clean_stem}.{extension}")
+        for extension in normalised_formats
+    ]
+    save_figure_files(figure, paths, dpi=int(dpi))
     return paths
+
+
+def _convert_tiff_to_rgb(path: Path, dpi: int) -> None:
+    """Rewrite one rendered TIFF as RGB with explicit LZW and DPI metadata."""
+
+    try:
+        with Image.open(path) as source:
+            rgb = source.convert("RGB")
+        rgb.save(
+            path,
+            format="TIFF",
+            compression="tiff_lzw",
+            dpi=(float(dpi), float(dpi)),
+        )
+    except (OSError, ValueError) as exc:
+        raise BundleExportError(
+            f"无法将 TIFF 输出转换为 RGB/LZW：{path.name}。"
+        ) from exc
+
+
+def save_figure_files(
+    figure: Any,
+    paths: Sequence[Path],
+    dpi: int = 600,
+) -> None:
+    """Save one Matplotlib figure with the shared font and raster contract.
+
+    SVG and PDF retain editable text. PNG preserves the requested DPI. TIFF is
+    explicitly rewritten as RGB with LZW compression because Matplotlib's
+    direct TIFF output is commonly RGBA, which some journal portals reject.
+    """
+
+    if not 72 <= int(dpi) <= 1200:
+        raise BundleExportError("PNG/TIFF 分辨率必须在 72–1200 dpi 之间。")
+    output_paths = [Path(path) for path in paths]
+    if not output_paths:
+        raise BundleExportError("至少需要一个图件输出路径。")
+    extensions = [path.suffix.lower().lstrip(".") for path in output_paths]
+    unsupported = [
+        extension
+        for extension in extensions
+        if extension not in _SUPPORTED_FIGURE_FORMATS
+    ]
+    if unsupported:
+        raise BundleExportError(
+            "不支持以下图件格式：" + ", ".join(sorted(set(unsupported))) + "。"
+        )
+
+    with publication_style():
+        for path, extension in zip(output_paths, extensions):
+            options: dict[str, Any] = {"facecolor": "white"}
+            if extension in {"png", "tiff"}:
+                options["dpi"] = int(dpi)
+            if extension == "tiff":
+                options["pil_kwargs"] = {"compression": "tiff_lzw"}
+            figure.savefig(path, **options)
+            if extension == "tiff":
+                _convert_tiff_to_rgb(path, int(dpi))
 
 
 def shareable_records(

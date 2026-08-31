@@ -123,7 +123,9 @@ def test_plotter_exports_submission_bundle_and_requires_scientific_gates(
         assert image.size[1] in range(313, 317)
         assert image.info["dpi"][0] == pytest.approx(100, abs=0.1)
     with Image.open(output / "figure-k2o.tiff") as image:
+        assert image.mode == "RGB"
         assert image.tag_v2.get(259) == 5
+        assert image.info["dpi"] == (100.0, 100.0)
     persisted = json.loads(
         (output / "figure-k2o.report.json").read_text(encoding="utf-8")
     )

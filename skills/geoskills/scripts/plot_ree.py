@@ -23,6 +23,7 @@ from matplotlib.path import Path as MatplotlibPath
 from matplotlib.ticker import LogFormatterMathtext, LogLocator
 
 from geoskills_core.errors import PlottingError
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     FORMATS,
     GROUP_COLORS,
@@ -200,6 +201,9 @@ def build_figure(
     y_label: str = "Sample / C1 chondrite",
     reference_note: str | None = None,
     x_tick_labelsize: float | None = None,
+    x_tick_stagger: bool = False,
+    show_sample_ids: bool = True,
+    group_legend_title: str = "Group",
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[plt.Figure, dict[str, Any]]:
     """Build one figure; export callers must reuse this same figure object."""
@@ -211,6 +215,9 @@ def build_figure(
         raise PlottingError(f"图例布局必须是：{', '.join(LEGEND_LAYOUTS)}。")
     if grid_style not in GRID_STYLES:
         raise PlottingError(f"网格样式必须是：{', '.join(GRID_STYLES)}。")
+    clean_group_legend_title = str(group_legend_title).strip()
+    if not clean_group_legend_title:
+        raise PlottingError("分组图例标题不能为空。")
 
     samples = normalized[sample_column].astype("string").tolist()
     if group_column is None:
@@ -293,6 +300,11 @@ def build_figure(
     ax.set_xticklabels(elements)
     if x_tick_labelsize is not None:
         ax.tick_params(axis="x", labelsize=x_tick_labelsize)
+    x_tick_label_strategy = "standard"
+    if x_tick_stagger and len(elements) > 1:
+        for index, label in enumerate(ax.get_xticklabels()):
+            label.set_y(-0.025 if index % 2 else -0.005)
+        x_tick_label_strategy = "staggered"
     # Element symbols already define the categorical x axis; omitting a repeated
     # x-axis title preserves space and improves readability after journal scaling.
     ax.set_xlabel("")
@@ -363,12 +375,12 @@ def build_figure(
             textwrap.fill(f"{group} (n={plotted_group_counts[group]})", width=26)
             for group in plotted_group_order
         ]
-        group_title = (
-            "Rock type" if str(group_column).casefold() == "group" else str(group_column)
-        )
+        group_title = clean_group_legend_title
 
     def add_outside_legends() -> None:
         if group_column is None:
+            if not show_sample_ids:
+                return
             fig.legend(
                 sample_handles,
                 [str(sample) for sample in plotted_samples],
@@ -394,20 +406,21 @@ def build_figure(
             labelspacing=0.5,
             borderaxespad=0,
         )
-        fig.legend(
-            sample_handles,
-            [str(sample) for sample in plotted_samples],
-            loc="upper left",
-            bbox_to_anchor=(0.755, 0.57),
-            fontsize=6.1,
-            title="Sample ID (symbol)",
-            title_fontsize=6.6,
-            handlelength=1.35,
-            labelspacing=0.45,
-            columnspacing=0.8,
-            ncol=2 if len(plotted_samples) >= 6 else 1,
-            borderaxespad=0,
-        )
+        if show_sample_ids:
+            fig.legend(
+                sample_handles,
+                [str(sample) for sample in plotted_samples],
+                loc="upper left",
+                bbox_to_anchor=(0.755, 0.57),
+                fontsize=6.1,
+                title="Sample ID (symbol)",
+                title_fontsize=6.6,
+                handlelength=1.35,
+                labelspacing=0.45,
+                columnspacing=0.8,
+                ncol=2 if len(plotted_samples) >= 6 else 1,
+                borderaxespad=0,
+            )
 
     def add_inside_legends(
         *,
@@ -454,39 +467,52 @@ def build_figure(
                 ax.transAxes.inverted()
             )
             sample_anchor_y = float(group_box.y0) - 0.018
-        sample_legend = ax.legend(
-            sample_handles,
-            [str(sample) for sample in plotted_samples],
-            loc="upper right",
-            bbox_to_anchor=(0.985, sample_anchor_y),
-            bbox_transform=ax.transAxes,
-            fontsize=sample_fontsize,
-            title="Sample ID (symbol)" if group_column is not None else "Sample ID",
-            title_fontsize=5.9,
-            handlelength=1.25,
-            labelspacing=0.32,
-            columnspacing=0.62,
-            ncol=min(sample_columns, len(plotted_samples)),
-            borderaxespad=0,
-            frameon=True,
-            fancybox=False,
-            borderpad=0.48,
-        )
-        configure_boxed_legend(sample_legend)
-        legends.append(sample_legend)
+        if show_sample_ids:
+            sample_legend = ax.legend(
+                sample_handles,
+                [str(sample) for sample in plotted_samples],
+                loc="upper right",
+                bbox_to_anchor=(0.985, sample_anchor_y),
+                bbox_transform=ax.transAxes,
+                fontsize=sample_fontsize,
+                title=(
+                    "Sample ID (symbol)"
+                    if group_column is not None
+                    else "Sample ID"
+                ),
+                title_fontsize=5.9,
+                handlelength=1.25,
+                labelspacing=0.32,
+                columnspacing=0.62,
+                ncol=min(sample_columns, len(plotted_samples)),
+                borderaxespad=0,
+                frameon=True,
+                fancybox=False,
+                borderpad=0.48,
+            )
+            configure_boxed_legend(sample_legend)
+            legends.append(sample_legend)
         return legends
 
-    plot_right = 0.96 if legend_layout == "inside-auto" else 0.73
+    legend_needed = group_column is not None or show_sample_ids
+    plot_right = (
+        0.96
+        if legend_layout == "inside-auto" or not legend_needed
+        else 0.73
+    )
+    plot_bottom = 0.19 if x_tick_stagger else 0.16
     fig.subplots_adjust(
         left=0.095,
         right=plot_right,
-        bottom=0.16,
+        bottom=plot_bottom,
         top=0.90 if title else 0.95,
     )
-    legend_position = "outside_right"
+    legend_position = "outside_right" if legend_needed else "none"
     legend_fallback = False
     inside_legend_strategy: str | None = None
-    if legend_layout == "inside-auto":
+    if not legend_needed:
+        pass
+    elif legend_layout == "inside-auto":
         candidates = [
             {
                 "name": "stacked",
@@ -532,7 +558,7 @@ def build_figure(
             fig.subplots_adjust(
                 left=0.095,
                 right=0.73,
-                bottom=0.16,
+                bottom=plot_bottom,
                 top=0.90 if title else 0.95,
             )
             add_outside_legends()
@@ -580,15 +606,20 @@ def build_figure(
         "unity_line_visible": unity_line_visible,
         "sample_count": len(samples),
         "plotted_sample_count": plotted_sample_count,
-        "legend_sample_count": len(plotted_samples),
+        "legend_sample_count": len(plotted_samples) if show_sample_ids else 0,
+        "sample_ids_rendered": bool(show_sample_ids),
         "group_count": len(plotted_group_order),
         "group_column": group_column,
+        "group_legend_title": (
+            clean_group_legend_title if group_column is not None else None
+        ),
         "skipped_samples": skipped_samples,
         "palette_repeated": len(plotted_group_order) > len(GROUP_COLORS),
         "line_style_repeated": len(plotted_group_order) > len(LINE_STYLES),
         "marker_repeated": plotted_sample_count > len(MARKERS),
         "axes_frame": axes_frame,
         "grid_style": grid_style,
+        "x_tick_label_strategy": x_tick_label_strategy,
         "legend_layout_requested": legend_layout,
         "legend_position": legend_position,
         "legend_fallback": legend_fallback,
@@ -598,7 +629,17 @@ def build_figure(
             not legend_fallback if legend_layout == "inside-auto" else None
         ),
         "legend_strategy": (
-            "boxed in-axes group colour/line-style and sample-symbol keys with collision check"
+            "boxed in-axes group colour/line-style key; sample IDs suppressed"
+            if (
+                not show_sample_ids
+                and group_column is not None
+                and legend_position == "inside_upper_right"
+            )
+            else "group colour/line-style key; sample IDs suppressed"
+            if not show_sample_ids and group_column is not None
+            else "no legend; sample IDs suppressed"
+            if not show_sample_ids
+            else "boxed in-axes group colour/line-style and sample-symbol keys with collision check"
             if legend_position == "inside_upper_right" and group_column is not None
             else "boxed in-axes sample key with collision check"
             if legend_position == "inside_upper_right"
@@ -611,7 +652,9 @@ def build_figure(
             "colour plus line style" if group_column is not None else "not applicable"
         ),
         "sample_encoding": (
-            "unique symbol"
+            "symbol only; sample identity not disclosed"
+            if not show_sample_ids
+            else "unique symbol"
             if plotted_sample_count <= len(MARKERS)
             else f"symbols repeat after {len(MARKERS)} plotted samples"
         ),
@@ -661,6 +704,8 @@ def plot_path(
     axes_frame: str = "open",
     legend_layout: str = "outside",
     grid_style: str = "none",
+    show_sample_ids: bool = True,
+    group_legend_title: str = "Group",
     overwrite: bool = False,
     reference_path: Path = DEFAULT_REFERENCE_PATH,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
@@ -754,17 +799,13 @@ def plot_path(
             axes_frame=axes_frame,
             legend_layout=legend_layout,
             grid_style=grid_style,
+            show_sample_ids=show_sample_ids,
+            group_legend_title=group_legend_title,
             style_preset=style_preset,
         )
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        for path in figure_paths:
-            save_options: dict[str, Any] = {"facecolor": "white"}
-            if path.suffix.lower() in {".png", ".tiff"}:
-                save_options["dpi"] = dpi
-            if path.suffix.lower() == ".tiff":
-                save_options["pil_kwargs"] = {"compression": "tiff_lzw"}
-            figure.savefig(path, **save_options)
+        save_figure_files(figure, figure_paths, dpi=dpi)
         source_columns = [sample_column]
         if group_column is not None:
             source_columns.append(group_column)
@@ -867,6 +908,8 @@ def plot_path(
                 "axes_frame": axes_frame,
                 "legend_layout": legend_layout,
                 "legend_position": plot_info["legend_position"],
+                "show_sample_ids": show_sample_ids,
+                "group_legend_title": group_legend_title,
                 "grid_style": grid_style,
                 "width_mm": width_mm,
                 "height_mm": height_mm,
@@ -886,7 +929,11 @@ def plot_path(
                 "tiff_compression": "LZW",
                 "white_background": True,
                 "colourblind_support": (
-                    "group colour plus line style; unique sample symbol"
+                    "group colour plus line style; sample IDs suppressed"
+                    if not show_sample_ids and group_column is not None
+                    else "sample symbols shown without identity key"
+                    if not show_sample_ids
+                    else "group colour plus line style; unique sample symbol"
                     if not plot_info["marker_repeated"]
                     else "group colour plus line style; sample symbols repeat with warning"
                 ),
@@ -956,6 +1003,16 @@ def parse_args() -> argparse.Namespace:
         help="横向网格：none（投稿默认）或 major（仅主刻度）",
     )
     parser.add_argument(
+        "--hide-sample-ids",
+        action="store_true",
+        help="不在图件图例中显示样品编号；分组图例仍保留",
+    )
+    parser.add_argument(
+        "--group-legend-title",
+        default="Group",
+        help="分组图例标题，默认 Group；不会根据列名猜测岩性",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="明确允许替换已存在的整套输出文件",
@@ -985,6 +1042,8 @@ def main() -> int:
         axes_frame=args.axes_frame,
         legend_layout=args.legend_layout,
         grid_style=args.grid_style,
+        show_sample_ids=not args.hide_sample_ids,
+        group_legend_title=args.group_legend_title,
         overwrite=args.overwrite,
     )
     json.dump(report, sys.stdout, ensure_ascii=False, indent=2)

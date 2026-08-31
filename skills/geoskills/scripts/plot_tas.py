@@ -22,6 +22,7 @@ from matplotlib.patches import Polygon
 from matplotlib.path import Path as MatplotlibPath
 
 from geoskills_core.errors import PlottingError
+from geoskills_core.export import save_figure_files
 from geoskills_core.plotting import (
     GROUP_COLORS,
     MARKERS,
@@ -36,11 +37,11 @@ from inspect_major_data import (
     read_major_table,
 )
 from plot_geochem_common import (
+    chemical_formula_label,
     ensure_outputs_available,
     filter_requested_groups,
     group_style_map,
     output_targets,
-    save_figure_bundle,
     shareable_file_record,
     validate_export_parameters,
 )
@@ -294,16 +295,7 @@ def add_tas_legend(
     return legend, "outside_right_fallback", requested_layout == "inside-auto"
 
 
-@publication_styled(
-    overrides={
-        "font.sans-serif": [
-            "DejaVu Sans",
-            "Arial",
-            "Liberation Sans",
-        ]
-    },
-    preset_parameter="style_preset",
-)
+@publication_styled(preset_parameter="style_preset")
 def build_tas_figure(
     classified: pd.DataFrame,
     sample_column: str,
@@ -427,8 +419,10 @@ def build_tas_figure(
 
     ax.set_xlim(model["axes"]["x"]["limits"])
     ax.set_ylim(model["axes"]["y"]["limits"])
-    ax.set_xlabel("SiO₂ (wt%)")
-    ax.set_ylabel("Na₂O + K₂O (wt%)")
+    ax.set_xlabel(f"{chemical_formula_label('SiO2')} (wt%)")
+    ax.set_ylabel(
+        f"{chemical_formula_label('Na2O')} + {chemical_formula_label('K2O')} (wt%)"
+    )
     ax.set_xticks(np.arange(35, 91, 5))
     ax.set_yticks(np.arange(0, 21, 2))
     ax.tick_params(
@@ -639,7 +633,7 @@ def plot_tas_path(
             style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
-        save_figure_bundle(figure, figure_paths, dpi)
+        save_figure_files(figure, figure_paths, dpi=dpi)
         classified.to_csv(
             source_path,
             index=False,

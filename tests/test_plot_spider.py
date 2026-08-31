@@ -80,8 +80,40 @@ def test_exports_spider_publication_bundle(tmp_path: Path) -> None:
     with Image.open(paths["tiff"]) as image:
         assert image.tag_v2.get(259) == 5
         assert image.info["dpi"] == (100.0, 100.0)
+        assert image.mode == "RGB"
     assert len(report["oxide_conversions"]) == 3
     assert not any(item["code"] == "W557" for item in report["issues"])
+    assert report["plot"]["x_tick_label_strategy"] == "staggered"
+
+
+def test_spider_figure_can_hide_sample_ids_without_losing_group_legend(
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "private-safe"
+    result, report = run_plotter(
+        EXAMPLE,
+        "--output-dir",
+        output_dir,
+        "--stem",
+        "private_safe",
+        "--hide-sample-ids",
+        "--group-legend-title",
+        "Sample suite",
+        "--dpi",
+        "90",
+    )
+
+    svg = (output_dir / "private_safe.svg").read_text(encoding="utf-8")
+    assert result.returncode == 0
+    assert report["configuration"]["show_sample_ids"] is False
+    assert report["configuration"]["group_legend_title"] == "Sample suite"
+    assert report["plot"]["sample_ids_rendered"] is False
+    assert "SYN-A" not in svg
+    assert "SYN-B" not in svg
+    assert "SYN-C" not in svg
+    assert "Suite A" in svg
+    assert "Suite B" in svg
+    assert "Sample suite" in svg
 
 
 def test_custom_elements_follow_reference_order(tmp_path: Path) -> None:

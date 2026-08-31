@@ -66,7 +66,9 @@ def test_exports_harker_publication_bundle(tmp_path: Path) -> None:
         assert image.size[1] in range(274, 277)
         assert image.info["dpi"][0] == pytest.approx(100, abs=0.1)
     with Image.open(paths["tiff"]) as image:
+        assert image.mode == "RGB"
         assert image.tag_v2.get(259) == 5
+        assert image.info["dpi"] == (100.0, 100.0)
 
 
 def test_custom_trace_y_and_group_filter(tmp_path: Path) -> None:

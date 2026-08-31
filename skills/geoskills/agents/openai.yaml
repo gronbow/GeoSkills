@@ -1,4 +1,4 @@
 interface:
   display_name: "GeoSkills"
   short_description: "Audit and plot local geochemistry safely"
-  default_prompt: "Use $geoskills to audit my local geochemical table, review its composition basis, and create a submission-oriented REE, spider, Harker, TAS, or K2O-SiO2 figure bundle."
+  default_prompt: "Use $geoskills to audit my local geochemical table, review its variables and composition basis, and create a privacy-safe REE, spider, Harker, TAS, K2O-SiO2, or coordinate-only XY figure bundle."

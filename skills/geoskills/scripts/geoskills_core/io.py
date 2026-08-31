@@ -5,11 +5,18 @@ from __future__ import annotations
 import csv
 import codecs
 import hashlib
+import re
+import stat
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeAlias
+from xml.etree.ElementTree import ParseError
+from zipfile import BadZipFile, ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 import pandas as pd
+from defusedxml import ElementTree as SafeElementTree
+from defusedxml.common import DefusedXmlException
 
 from .analytes import (
     GROUP_NAME_ALIASES,
@@ -33,9 +40,431 @@ SUPPORTED_SUFFIXES = frozenset({".csv", ".txt", ".xlsx"})
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024
 TEXT_ENCODINGS = ("utf-8-sig", "gb18030")
 
+# These defaults accept tables far larger than normal whole-rock geochemistry
+# datasets while placing a predictable ceiling on memory use. Limits apply to
+# the complete table; GeoSkills never samples or silently truncates input.
+MAX_TABLE_ROWS = 100_000
+MAX_TABLE_COLUMNS = 2_048
+MAX_TABLE_CELLS = 2_000_000
+MAX_FIELD_CHARS = 65_536
+
+# XLSX is a ZIP container. Its compressed size alone is not a safe resource
+# bound, so archive contents are checked before pandas/openpyxl sees the file.
+MAX_XLSX_ENTRIES = 1_024
+MAX_XLSX_TOTAL_UNCOMPRESSED_BYTES = 128 * 1024 * 1024
+MAX_XLSX_SINGLE_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+MAX_XLSX_COMPRESSION_RATIO = 100.0
+MAX_XLSX_XML_DEPTH = 128
+MAX_XLSX_ENTRY_NAME_CHARS = 1_024
+
+_CELL_REFERENCE = re.compile(r"^\$?([A-Za-z]+)\$?([1-9][0-9]*)$")
+_ALLOWED_XLSX_COMPRESSION = frozenset({ZIP_STORED, ZIP_DEFLATED})
+
 TransposeResult: TypeAlias = tuple[pd.DataFrame, dict[str, Any]]
 Transposer: TypeAlias = Callable[[pd.DataFrame], TransposeResult | None]
 AnalyteMatcher: TypeAlias = Callable[[object], AnalyteMatch | None]
+
+
+@dataclass(frozen=True)
+class TableBudget:
+    """Hard limits for one parsed table, including its header row."""
+
+    max_rows: int = MAX_TABLE_ROWS
+    max_columns: int = MAX_TABLE_COLUMNS
+    max_cells: int = MAX_TABLE_CELLS
+    max_field_chars: int = MAX_FIELD_CHARS
+
+    def __post_init__(self) -> None:
+        for name, value in vars(self).items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{name} must be a positive integer.")
+
+
+@dataclass(frozen=True)
+class XlsxArchiveBudget:
+    """Hard limits for the ZIP/XML resources inside one XLSX workbook."""
+
+    max_entries: int = MAX_XLSX_ENTRIES
+    max_total_uncompressed_bytes: int = MAX_XLSX_TOTAL_UNCOMPRESSED_BYTES
+    max_single_uncompressed_bytes: int = MAX_XLSX_SINGLE_UNCOMPRESSED_BYTES
+    max_compression_ratio: float = MAX_XLSX_COMPRESSION_RATIO
+    max_xml_depth: int = MAX_XLSX_XML_DEPTH
+
+    def __post_init__(self) -> None:
+        integer_fields = (
+            "max_entries",
+            "max_total_uncompressed_bytes",
+            "max_single_uncompressed_bytes",
+            "max_xml_depth",
+        )
+        for name in integer_fields:
+            value = getattr(self, name)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"{name} must be a positive integer.")
+        if (
+            isinstance(self.max_compression_ratio, bool)
+            or not isinstance(self.max_compression_ratio, (int, float))
+            or self.max_compression_ratio <= 0
+        ):
+            raise ValueError("max_compression_ratio must be positive.")
+
+
+DEFAULT_TABLE_BUDGET = TableBudget()
+DEFAULT_XLSX_ARCHIVE_BUDGET = XlsxArchiveBudget()
+
+
+def _raise_table_budget(
+    limit: str,
+    observed: int,
+    maximum: int,
+) -> None:
+    raise InputValidationError(
+        (
+            f"Input table exceeds the {limit} safety limit "
+            f"({observed} > {maximum}); no rows were sampled or truncated."
+        ),
+        code="E107",
+        details={
+            "limit": limit,
+            "observed": observed,
+            "maximum": maximum,
+        },
+        suggested_action=(
+            "Split the table into smaller complete datasets, then create a "
+            "separate reviewed recipe for each dataset."
+        ),
+    )
+
+
+def _raise_xlsx_archive(reason: str, **safe_details: int | float) -> None:
+    raise InputValidationError(
+        "Excel workbook failed the XLSX archive safety preflight.",
+        code="E108",
+        details={"reason": reason, **safe_details},
+        suggested_action=(
+            "Open the workbook in a trusted spreadsheet application and save "
+            "a clean .xlsx copy containing only the required data sheets."
+        ),
+    )
+
+
+def _raise_xlsx_xml(reason: str) -> None:
+    raise InputValidationError(
+        "Excel workbook contains XML that is unsafe or too complex to parse.",
+        code="E109",
+        details={"reason": reason},
+        suggested_action=(
+            "Open the workbook in a trusted spreadsheet application and save "
+            "a clean .xlsx copy, or export the required sheet as UTF-8 CSV."
+        ),
+    )
+
+
+def _column_number(reference: str) -> tuple[int, int] | None:
+    match = _CELL_REFERENCE.fullmatch(reference)
+    if match is None:
+        return None
+    letters, row_text = match.groups()
+    column = 0
+    for character in letters.upper():
+        column = column * 26 + ord(character) - ord("A") + 1
+    return column, int(row_text)
+
+
+def _check_coordinate(
+    reference: str,
+    budget: TableBudget,
+) -> None:
+    coordinate = _column_number(reference)
+    if coordinate is None:
+        _raise_xlsx_xml("invalid_cell_reference")
+    column, row = coordinate
+    if column > budget.max_columns:
+        _raise_table_budget("max_columns", column, budget.max_columns)
+    if row > budget.max_rows:
+        _raise_table_budget("max_rows", row, budget.max_rows)
+
+
+def _check_dimension(reference: str, budget: TableBudget) -> None:
+    endpoints = reference.split(":")
+    if len(endpoints) not in {1, 2}:
+        _raise_xlsx_xml("invalid_dimension_reference")
+    for endpoint in endpoints:
+        _check_coordinate(endpoint, budget)
+
+
+def _local_name(tag: object) -> str:
+    text = str(tag)
+    return text.rsplit("}", 1)[-1]
+
+
+def _preflight_xml_part(
+    stream: Any,
+    *,
+    part_kind: str,
+    table_budget: TableBudget,
+    archive_budget: XlsxArchiveBudget,
+) -> None:
+    depth = 0
+    row_count = 0
+    cell_count = 0
+    cells_in_row = 0
+    in_cell = False
+    cell_chars = 0
+    in_shared_string = False
+    shared_string_chars = 0
+    try:
+        parser = SafeElementTree.iterparse(
+            stream,
+            events=("start", "end"),
+            forbid_dtd=True,
+            forbid_entities=True,
+            forbid_external=True,
+        )
+        for event, element in parser:
+            name = _local_name(element.tag)
+            if event == "start":
+                depth += 1
+                if depth > archive_budget.max_xml_depth:
+                    _raise_xlsx_xml("xml_depth_limit")
+                if part_kind == "worksheet":
+                    if name == "dimension" and element.get("ref"):
+                        _check_dimension(str(element.get("ref")), table_budget)
+                    elif name == "row":
+                        row_count += 1
+                        if row_count > table_budget.max_rows:
+                            _raise_table_budget(
+                                "max_rows", row_count, table_budget.max_rows
+                            )
+                        row_reference = element.get("r")
+                        if row_reference:
+                            try:
+                                row_number = int(row_reference)
+                            except ValueError:
+                                _raise_xlsx_xml("invalid_row_reference")
+                            if row_number > table_budget.max_rows:
+                                _raise_table_budget(
+                                    "max_rows", row_number, table_budget.max_rows
+                                )
+                        cells_in_row = 0
+                    elif name == "c":
+                        cell_count += 1
+                        cells_in_row += 1
+                        if cell_count > table_budget.max_cells:
+                            _raise_table_budget(
+                                "max_cells", cell_count, table_budget.max_cells
+                            )
+                        if cells_in_row > table_budget.max_columns:
+                            _raise_table_budget(
+                                "max_columns",
+                                cells_in_row,
+                                table_budget.max_columns,
+                            )
+                        reference = element.get("r")
+                        if reference:
+                            _check_coordinate(str(reference), table_budget)
+                        in_cell = True
+                        cell_chars = 0
+                elif part_kind == "shared_strings" and name == "si":
+                    in_shared_string = True
+                    shared_string_chars = 0
+                continue
+
+            text_length = len(element.text or "")
+            if text_length > table_budget.max_field_chars:
+                _raise_table_budget(
+                    "max_field_chars",
+                    text_length,
+                    table_budget.max_field_chars,
+                )
+            if part_kind == "worksheet" and in_cell and name in {"v", "t", "f"}:
+                cell_chars += text_length
+                if cell_chars > table_budget.max_field_chars:
+                    _raise_table_budget(
+                        "max_field_chars",
+                        cell_chars,
+                        table_budget.max_field_chars,
+                    )
+            if part_kind == "worksheet" and name == "c":
+                in_cell = False
+                cell_chars = 0
+            if part_kind == "shared_strings" and in_shared_string and name == "t":
+                shared_string_chars += text_length
+                if shared_string_chars > table_budget.max_field_chars:
+                    _raise_table_budget(
+                        "max_field_chars",
+                        shared_string_chars,
+                        table_budget.max_field_chars,
+                    )
+            if part_kind == "shared_strings" and name == "si":
+                in_shared_string = False
+                shared_string_chars = 0
+            element.clear()
+            depth -= 1
+    except InputValidationError:
+        raise
+    except (DefusedXmlException, ParseError, ValueError, OverflowError):
+        _raise_xlsx_xml("unsafe_xml")
+
+
+def _xlsx_part_kind(name: str) -> str:
+    normalized = name.casefold()
+    if normalized.startswith("xl/worksheets/") and normalized.endswith(".xml"):
+        return "worksheet"
+    if normalized == "xl/sharedstrings.xml":
+        return "shared_strings"
+    return "xml"
+
+
+def _entry_name_is_safe(name: str) -> bool:
+    if not name or len(name) > MAX_XLSX_ENTRY_NAME_CHARS:
+        return False
+    if "\x00" in name or "\\" in name or name.startswith("/"):
+        return False
+    parts = name.split("/")
+    if any(part == ".." for part in parts):
+        return False
+    if parts and parts[0].endswith(":"):
+        return False
+    return True
+
+
+def _preflight_xlsx(
+    path: Path,
+    table_budget: TableBudget,
+    archive_budget: XlsxArchiveBudget,
+) -> None:
+    try:
+        with ZipFile(path) as archive:
+            entries = archive.infolist()
+            if len(entries) > archive_budget.max_entries:
+                _raise_xlsx_archive(
+                    "entry_count_limit",
+                    observed=len(entries),
+                    maximum=archive_budget.max_entries,
+                )
+            names: set[str] = set()
+            total_uncompressed = 0
+            total_compressed = 0
+            for entry in entries:
+                if not _entry_name_is_safe(entry.filename):
+                    _raise_xlsx_archive("unsafe_entry_name")
+                if entry.filename in names:
+                    _raise_xlsx_archive("duplicate_entry_name")
+                names.add(entry.filename)
+                if entry.flag_bits & 0x1:
+                    _raise_xlsx_archive("encrypted_entry")
+                if entry.compress_type not in _ALLOWED_XLSX_COMPRESSION:
+                    _raise_xlsx_archive("unsupported_compression")
+                mode = (entry.external_attr >> 16) & 0o170000
+                if mode == stat.S_IFLNK:
+                    _raise_xlsx_archive("symbolic_link_entry")
+                if entry.file_size > archive_budget.max_single_uncompressed_bytes:
+                    _raise_xlsx_archive(
+                        "single_entry_size_limit",
+                        observed=entry.file_size,
+                        maximum=archive_budget.max_single_uncompressed_bytes,
+                    )
+                if entry.file_size and not entry.compress_size:
+                    _raise_xlsx_archive("invalid_entry_size")
+                if entry.compress_size:
+                    ratio = entry.file_size / entry.compress_size
+                    if ratio > archive_budget.max_compression_ratio:
+                        _raise_xlsx_archive(
+                            "compression_ratio_limit",
+                            observed=round(ratio, 2),
+                            maximum=archive_budget.max_compression_ratio,
+                        )
+                total_uncompressed += entry.file_size
+                total_compressed += entry.compress_size
+            if total_uncompressed > archive_budget.max_total_uncompressed_bytes:
+                _raise_xlsx_archive(
+                    "total_uncompressed_size_limit",
+                    observed=total_uncompressed,
+                    maximum=archive_budget.max_total_uncompressed_bytes,
+                )
+            if total_compressed:
+                ratio = total_uncompressed / total_compressed
+                if ratio > archive_budget.max_compression_ratio:
+                    _raise_xlsx_archive(
+                        "compression_ratio_limit",
+                        observed=round(ratio, 2),
+                        maximum=archive_budget.max_compression_ratio,
+                    )
+            corrupt_member = archive.testzip()
+            if corrupt_member is not None:
+                _raise_xlsx_archive("crc_mismatch")
+            for entry in entries:
+                lower_name = entry.filename.casefold()
+                if not lower_name.endswith((".xml", ".rels")):
+                    continue
+                with archive.open(entry) as stream:
+                    _preflight_xml_part(
+                        stream,
+                        part_kind=_xlsx_part_kind(entry.filename),
+                        table_budget=table_budget,
+                        archive_budget=archive_budget,
+                    )
+    except InputValidationError:
+        raise
+    except (BadZipFile, OSError, RuntimeError):
+        _raise_xlsx_archive("malformed_archive")
+
+
+def _preflight_text_table(
+    path: Path,
+    *,
+    encoding: str,
+    delimiter: str,
+    budget: TableBudget,
+) -> None:
+    previous_limit = csv.field_size_limit()
+    csv.field_size_limit(budget.max_field_chars + 1)
+    row_count = 0
+    cell_count = 0
+    try:
+        with path.open("r", encoding=encoding, errors="strict", newline="") as stream:
+            for row in csv.reader(stream, delimiter=delimiter):
+                row_count += 1
+                if row_count > budget.max_rows:
+                    _raise_table_budget("max_rows", row_count, budget.max_rows)
+                column_count = len(row)
+                if column_count > budget.max_columns:
+                    _raise_table_budget(
+                        "max_columns", column_count, budget.max_columns
+                    )
+                cell_count += column_count
+                if cell_count > budget.max_cells:
+                    _raise_table_budget("max_cells", cell_count, budget.max_cells)
+                for field in row:
+                    field_chars = len(field)
+                    if field_chars > budget.max_field_chars:
+                        _raise_table_budget(
+                            "max_field_chars",
+                            field_chars,
+                            budget.max_field_chars,
+                        )
+    except csv.Error as exc:
+        if "field larger than field limit" in str(exc).casefold():
+            _raise_table_budget(
+                "max_field_chars",
+                budget.max_field_chars + 1,
+                budget.max_field_chars,
+            )
+        raise
+    finally:
+        csv.field_size_limit(previous_limit)
+
+
+def _enforce_frame_budget(frame: pd.DataFrame, budget: TableBudget) -> None:
+    rows, columns = frame.shape
+    if rows > budget.max_rows:
+        _raise_table_budget("max_rows", rows, budget.max_rows)
+    if columns > budget.max_columns:
+        _raise_table_budget("max_columns", columns, budget.max_columns)
+    cells = rows * columns
+    if cells > budget.max_cells:
+        _raise_table_budget("max_cells", cells, budget.max_cells)
 
 
 def _sha256(path: Path) -> str:
@@ -315,8 +744,15 @@ def _read_text(
     path: Path,
     metadata: dict[str, Any],
     transposer: Transposer | None,
+    table_budget: TableBudget,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     encoding, delimiter = sniff_text_format(path)
+    _preflight_text_table(
+        path,
+        encoding=encoding,
+        delimiter=delimiter,
+        budget=table_budget,
+    )
     metadata["encoding"] = encoding
     metadata["delimiter"] = "TAB" if delimiter == "\t" else delimiter
     if transposer is not None:
@@ -329,11 +765,14 @@ def _read_text(
         adapted = transposer(raw)
         if adapted is not None:
             frame, transformation = adapted
+            _enforce_frame_budget(frame, table_budget)
             metadata["layout"] = "column_per_sample_transposed"
             metadata["transformation"] = transformation
             return frame, metadata
     metadata["layout"] = "row_per_sample"
-    return pd.read_csv(path, sep=delimiter, encoding=encoding), metadata
+    frame = pd.read_csv(path, sep=delimiter, encoding=encoding)
+    _enforce_frame_budget(frame, table_budget)
+    return frame, metadata
 
 
 def _read_excel(
@@ -341,7 +780,10 @@ def _read_excel(
     metadata: dict[str, Any],
     requested_sheet: str | int | None,
     transposer: Transposer | None,
+    table_budget: TableBudget,
+    xlsx_budget: XlsxArchiveBudget,
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
+    _preflight_xlsx(path, table_budget, xlsx_budget)
     with pd.ExcelFile(path) as workbook:
         metadata["sheet_names"] = list(workbook.sheet_names)
         selected_sheet = resolve_sheet(workbook.sheet_names, requested_sheet)
@@ -357,11 +799,14 @@ def _read_excel(
             adapted = transposer(raw)
             if adapted is not None:
                 frame, transformation = adapted
+                _enforce_frame_budget(frame, table_budget)
                 metadata["layout"] = "column_per_sample_transposed"
                 metadata["transformation"] = transformation
                 return frame, metadata
         metadata["layout"] = "row_per_sample"
-        return pd.read_excel(workbook, sheet_name=selected_sheet), metadata
+        frame = pd.read_excel(workbook, sheet_name=selected_sheet)
+        _enforce_frame_budget(frame, table_budget)
+        return frame, metadata
 
 
 def read_table(
@@ -370,6 +815,8 @@ def read_table(
     *,
     transposer: Transposer | None = adapt_transposed_table,
     max_file_size_bytes: int = MAX_FILE_SIZE_BYTES,
+    table_budget: TableBudget = DEFAULT_TABLE_BUDGET,
+    xlsx_budget: XlsxArchiveBudget = DEFAULT_XLSX_ARCHIVE_BUDGET,
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Read CSV/TXT/XLSX and return a table plus share-safe provenance.
 
@@ -383,12 +830,19 @@ def read_table(
     metadata = build_source_metadata(input_path)
     try:
         if input_path.suffix.lower() in {".csv", ".txt"}:
-            return _read_text(input_path, metadata, transposer)
+            return _read_text(
+                input_path,
+                metadata,
+                transposer,
+                table_budget,
+            )
         return _read_excel(
             input_path,
             metadata,
             requested_sheet,
             transposer,
+            table_budget,
+            xlsx_budget,
         )
     except InputValidationError:
         raise

@@ -1,9 +1,9 @@
 ---
 name: geoskills
-description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, explicit anhydrous 100% normalization, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, guarded volcanic TAS classification, and the reviewed non-extrapolated K2O-SiO2 magma-series diagram; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
+description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, explicit anhydrous 100% normalization, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, guarded volcanic TAS classification, the reviewed non-extrapolated K2O-SiO2 magma-series diagram, and coordinate-only grouped XY plots with independent linear or log10 axes; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
 ---
 
-# GeoSkills v0.6 workflow
+# GeoSkills v0.7 candidate workflow
 
 Use deterministic local Python for all table reading, normalization, classification, plotting, and export. The language model may guide choices and explain results, but must not calculate normalized ratios, convert oxides, or classify TAS fields manually.
 
@@ -31,8 +31,9 @@ Read [references/data-quality-and-derived-variables.md](references/data-quality-
 - `harker`: one validated X analyte against one or more validated Y analytes.
 - `tas`: volcanic-rock classification using SiO2 and Na2O + K2O.
 - `k2o-sio2`: non-extrapolated volcanic magma-series classification using anhydrous-normalized SiO2 and K2O.
+- `xy`: coordinate-only grouped bivariate plot using mapped analytes or reviewed same-unit ratios; X and Y axes may independently use linear or log10 scale.
 
-Stop if the requested diagram is outside this fixed registry. Do not imply support for isotope, tectonic-discrimination, or other diagram families.
+Stop if the requested diagram is outside this fixed registry. The `xy` diagram is not a classification diagram: do not invent or imply Zr/TiO2-Nb/Y, isotope, tectonic-discrimination, or other scientific boundaries.
 
 The generic classification-model code now supports the reviewed K2O-SiO2 asset. It remains only a development foundation for every other unregistered diagram. Read [references/classification-model-contract.md](references/classification-model-contract.md) before adding or reviewing another classification asset.
 
@@ -65,6 +66,7 @@ Never infer TAS applicability from sample names or values. Do not apply volcanic
 - Preserve the Sun and McDonough (1989) element order even for a subset.
 - Do not select a normalization reference from the apparent curve shape.
 - Keep the printed and footnote-modified primitive-mantle variants separate.
+- Enforce the fixed table, raster, point, group, and artist budgets before plotting. Never silently sample rows, merge groups, or drop variables to fit a budget.
 - Round Harker and logarithmic limits outward without clipping data. Keep TAS at the model's fixed limits.
 - Keep the K2O-SiO2 literature lines at their original lengths. Classify only within the complete four-field SiO2 domain of 48–63 wt%; plot but do not force-classify other visible points.
 
@@ -92,6 +94,10 @@ Use `shareable` unless the user explicitly needs the exact plotted-data CSV:
 - `local-reproducible` also retains the plotted-data CSV and marks it sensitive.
 
 Reports must not expose absolute paths, sample identifiers, or source values. Keep all processing local; do not send user tables to a model, analytics service, or third-party server. Clearly disclose any future remote processing before it occurs.
+
+In `shareable` mode, suppress sample identifiers inside the figures themselves as well as in reports. Use group-level legends only. Preserve exact sample identifiers only in the explicitly selected `local-reproducible` profile.
+
+Also omit source filenames, worksheet names, source-column labels, and selected group values from shareable plans and reports. Group names remain visible scientific labels inside figures, so require the user to review or anonymize sensitive locality/project labels before confirming plotted-data export.
 
 The workflow commits a multi-task output directory only after every task succeeds. Do not bypass stale-plan checks or overwrite an existing bundle unless the user explicitly approves replacement.
 

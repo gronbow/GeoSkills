@@ -2,7 +2,15 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)：加入显式无水100%组成基准、经专业复核且未外推的 K2O-SiO2 岩浆系列图，以及 Zr/TiO2-Nb/Y 坐标计算与单位校验底座。
+当前正式版本仍为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)。本分支是尚未发布的 v0.7.0 候选版：增加通用二维坐标图、安全输入预算和更严格的可分享图件隐私保护。
+
+## 三步开始（普通用户）
+
+1. 在 Codex 中说明“使用 GeoSkills”，并提供本地 CSV、TXT 或 XLSX 文件。
+2. 说明想画的图；二维散点图还需说明 X、Y 变量以及是否使用线性或对数轴。
+3. 先审核 GeoSkills 给出的数据映射和计划，确认无误后再批准出图。
+
+默认的 `shareable` 输出不会保留绘图数据 CSV，也不会把样品编号写进 REE、蛛网图或通用二维图。所有运算都在本地完成。
 
 ## 当前可以做什么
 
@@ -21,9 +29,11 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 使用 SiO2 与 Na2O + K2O 绘制火山岩 TAS 图，并输出逐样品分类与边界复核状态；
 - 使用 Rickwood（1989）核对并更正的 Peccerillo–Taylor（1976）原始边界绘制 K2O-SiO2 图，边界不外推；
 - 生成投稿尺寸的 REE、蛛网图、Harker、TAS 或 K2O-SiO2 图件，并输出 SVG、PDF、600 dpi TIFF、600 dpi PNG；
+- 用已映射分析物或经审核的同单位比值绘制坐标型通用二维图；X/Y 可独立选择线性或对数轴，但不自动添加分类边界；
 - 用一个 YAML 配方明确记录数据文件、列映射、单位、科学参数和人工确认项；
 - 在出图前生成不含源数据值的计划，数据或参考文件变化后旧计划自动失效；
 - 用一个配方从同一数据表运行一个或多个图件任务，所有任务成功后才提交完整输出；
+- 在出图前检查表格、像素、数据点、分组和独立绘图对象的固定资源上限；超限时完整拒绝，不静默抽样或合并；
 - 输出机器可读的 JSON 报告和中文 QA 摘要；
 - 可在 `local-reproducible` 模式保留实际绘图数据 CSV，或在 `shareable` 模式省略该敏感文件；
 - 统一工作流默认使用完整四边框，并自动安排图例以尽量避免遮挡数据或超出图幅；
@@ -62,7 +72,7 @@ python -m venv .venv
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
-## v0.6 统一工作流
+## v0.7 统一工作流候选版
 
 可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
 
@@ -76,18 +86,20 @@ python -m venv .venv
 .\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py self-check
 ```
 
-仓库提供三个可以直接配合合成数据运行的示例配方：
+仓库提供四个可以直接配合合成数据运行的示例配方，以及一个所有确认项均关闭的安全模板：
 
 | 配方 | 任务 |
 |---|---|
 | `geoskills_ree_workflow.yaml` | REE 配分图 |
 | `geoskills_spider_workflow.yaml` | 微量元素蛛网图 |
 | `geoskills_major_workflow.yaml` | 同时生成 Harker、TAS 和 K2O-SiO2 |
+| `geoskills_xy_workflow.yaml` | 通用二维坐标图 |
+| `user_recipe_template.yaml` | 自有数据起点；需替换占位字段并逐项审核 |
 
 例如，先为主量元素三任务配方生成计划：
 
 ```powershell
-.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py plan skills\geoskills\examples\geoskills_major_workflow.yaml --out outputs\major-plan.json
+.\.venv\Scripts\python.exe skills\geoskills\scripts\geoskills.py plan skills\geoskills\examples\geoskills_major_workflow.yaml --output outputs\major-plan.json
 ```
 
 此命令不会生成图件。终端只显示状态、计划编号、计划文件名和问题摘要；完整的任务、列映射、单位、参考文件、图件尺寸和输出模式保存在 `outputs\major-plan.json`。请让 Codex 打开并概括该文件，或用文本编辑器查看。状态为 `ready` 且内容经人工核对后，再运行：
@@ -102,9 +114,11 @@ python -m venv .venv
 
 默认 `shareable` 模式不保留逐样品绘图数据 CSV，便于分享图件与报告；需要完全本地复现时，可在配方中改为 `local-reproducible`。该模式会保留敏感 CSV，不应直接上传公开仓库。将 `plotted_data_export_reviewed` 设为 `true`，只表示已经核对这种导出后果，不表示允许把数据上传到模型或第三方服务。
 
-示例配方中的确认项只适用于仓库内已审核的合成数据。把配方复制给自己的数据后，应先把确认项改为 `false`，实际核对完成后再逐项确认。
+可分享计划和报告还会省略原始文件名、工作表名、源列名，并把明确选择的分组值替换为数量与摘要哈希。图件仍会保留分组图例，因为分组是科研图的可见语义；若分组名包含地点、项目代号或其他敏感信息，应先在本地副本中改为可公开名称，再确认 `plotted_data_export_reviewed`。
 
-配方字段、质控/组成基准/派生比值、五类任务示例、返回状态和常见错误见 [配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md)、[数据质控、组成基准与派生比值](skills/geoskills/references/data-quality-and-derived-variables.md) 和 [K2O-SiO2 科学合同](skills/geoskills/references/k2o-sio2-method.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
+示例配方中的确认项只适用于仓库内已审核的合成数据。自己的数据应从 `user_recipe_template.yaml` 开始；该模板不会预先替你作出任何确认。
+
+配方字段、质控/组成基准/派生比值、六类任务示例、返回状态和常见错误见 [配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md)、[数据质控、组成基准与派生比值](skills/geoskills/references/data-quality-and-derived-variables.md) 和 [K2O-SiO2 科学合同](skills/geoskills/references/k2o-sio2-method.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
 
 ## v0.3 单脚本兼容命令
 
