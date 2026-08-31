@@ -120,7 +120,7 @@ def issue_codes(result: dict) -> set[str]:
 
 
 def test_version_and_registry_are_fixed_and_json_ready() -> None:
-    assert VERSION == "0.7.0-rc1"
+    assert VERSION == "0.8.0-rc1"
     assert diagram_ids() == (
         "ree", "spider", "harker", "tas", "k2o-sio2", "xy"
     )
@@ -129,11 +129,17 @@ def test_version_and_registry_are_fixed_and_json_ready() -> None:
     }
     assert BUILTIN_STYLE_PRESETS == (
         "publication-double-column",
+        "publication-single-column",
         "review-preview",
     )
 
     snapshot = registry_snapshot()
     json.dumps(snapshot, ensure_ascii=False)
+    assert all(
+        item["output_contract"]["source_data_by_profile"]
+        == {"shareable": False, "local-reproducible": True}
+        for item in snapshot
+    )
     required_fields = {
         "id",
         "api_version",

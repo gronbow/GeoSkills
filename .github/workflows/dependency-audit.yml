@@ -1,0 +1,42 @@
+name: Dependency audit
+
+on:
+  pull_request:
+    paths:
+      - "requirements-dev.txt"
+      - "skills/geoskills/scripts/requirements.txt"
+      - ".github/workflows/dependency-audit.yml"
+  push:
+    branches: [main]
+    paths:
+      - "requirements-dev.txt"
+      - "skills/geoskills/scripts/requirements.txt"
+      - ".github/workflows/dependency-audit.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install pinned audit tool
+        run: python -m pip install --disable-pip-version-check pip-audit==2.10.1
+
+      - name: Audit declared Python dependencies
+        run: python -m pip_audit --strict --requirement requirements-dev.txt

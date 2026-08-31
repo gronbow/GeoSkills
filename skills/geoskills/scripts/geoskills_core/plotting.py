@@ -48,6 +48,7 @@ SANS_SERIF_FONT_STACK = (
 )
 
 PUBLICATION_DOUBLE_COLUMN = "publication-double-column"
+PUBLICATION_SINGLE_COLUMN = "publication-single-column"
 REVIEW_PREVIEW = "review-preview"
 
 _PUBLICATION_DOUBLE_COLUMN_RCPARAMS: Mapping[str, Any] = MappingProxyType(
@@ -91,9 +92,23 @@ _REVIEW_PREVIEW_RCPARAMS: Mapping[str, Any] = MappingProxyType(
     }
 )
 
+_PUBLICATION_SINGLE_COLUMN_RCPARAMS: Mapping[str, Any] = MappingProxyType(
+    {
+        **dict(_PUBLICATION_DOUBLE_COLUMN_RCPARAMS),
+        # Seven-point type remains readable at final size and matches the
+        # double-column publication vocabulary.
+        "font.size": 7.0,
+        "axes.labelsize": 7.0,
+        "xtick.labelsize": 7.0,
+        "ytick.labelsize": 7.0,
+        "legend.fontsize": 6.5,
+    }
+)
+
 STYLE_PRESETS: Mapping[str, Mapping[str, Any]] = MappingProxyType(
     {
         PUBLICATION_DOUBLE_COLUMN: _PUBLICATION_DOUBLE_COLUMN_RCPARAMS,
+        PUBLICATION_SINGLE_COLUMN: _PUBLICATION_SINGLE_COLUMN_RCPARAMS,
         REVIEW_PREVIEW: _REVIEW_PREVIEW_RCPARAMS,
     }
 )

@@ -16,14 +16,35 @@ MAX_DPI = 1200
 # multi-gigabyte requests before Matplotlib allocates them.
 MAX_RASTER_PIXELS = 75_000_000
 
-BUILTIN_STYLE_DEFAULTS: Mapping[str, Mapping[str, int | float]] = (
+BUILTIN_STYLE_DEFAULTS: Mapping[str, Mapping[str, int | float | bool]] = (
     MappingProxyType(
         {
             "publication-double-column": MappingProxyType(
-                {"width_mm": 183.0, "height_mm": 120.0, "dpi": 600}
+                {
+                    "width_mm": 183.0,
+                    "height_mm": 120.0,
+                    "dpi": 600,
+                    "show_reference_note": True,
+                }
+            ),
+            "publication-single-column": MappingProxyType(
+                {
+                    "width_mm": 89.0,
+                    "height_mm": 75.0,
+                    "dpi": 600,
+                    # Full provenance remains in the machine-readable report
+                    # and QA summary.  Omitting the long canvas footnote keeps
+                    # text legible at the actual 89 mm publication width.
+                    "show_reference_note": False,
+                }
             ),
             "review-preview": MappingProxyType(
-                {"width_mm": 150.0, "height_mm": 100.0, "dpi": 300}
+                {
+                    "width_mm": 150.0,
+                    "height_mm": 100.0,
+                    "dpi": 300,
+                    "show_reference_note": True,
+                }
             ),
         }
     )

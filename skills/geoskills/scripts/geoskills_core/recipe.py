@@ -1176,7 +1176,8 @@ def _validate_presets(
                 _issue(
                     "E314",
                     "error",
-                    "extends 必须指向 publication-double-column 或 review-preview。",
+                    "extends 必须指向 publication-double-column、"
+                    "publication-single-column 或 review-preview。",
                     field=f"presets.{name}.extends",
                 )
             )

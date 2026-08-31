@@ -1,4 +1,7 @@
 interface:
   display_name: "GeoSkills"
   short_description: "Audit and plot local geochemistry safely"
+  icon_small: "./assets/ui/geoskills-icon-400.png"
+  icon_large: "./assets/ui/geoskills-icon.svg"
+  brand_color: "#16324F"
   default_prompt: "Use $geoskills to audit my local geochemical table, review its variables and composition basis, and create a privacy-safe REE, spider, Harker, TAS, K2O-SiO2, or coordinate-only XY figure bundle."

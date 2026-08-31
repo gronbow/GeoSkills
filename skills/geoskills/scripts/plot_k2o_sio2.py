@@ -202,6 +202,7 @@ def build_figure(
     width_mm: float,
     height_mm: float,
     legend_layout: str,
+    show_reference_note: bool = True,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[Any, dict[str, Any]]:
     """Build one fixed-geometry, non-extrapolated classification figure."""
@@ -210,7 +211,7 @@ def build_figure(
     figure.subplots_adjust(
         left=0.105,
         right=0.965,
-        bottom=0.20,
+        bottom=0.20 if show_reference_note else 0.12,
         top=0.93 if title else 0.965,
     )
 
@@ -335,16 +336,17 @@ def build_figure(
         spine.set_linewidth(0.75)
     if title:
         ax.set_title(title, fontsize=8, pad=6)
-    figure.text(
-        0.105,
-        0.035,
-        "Peccerillo & Taylor (1976); coordinates corrected by Rickwood (1989).\n"
-        "Anhydrous 100% basis; no extrapolation; complete four-field domain: SiO2 48–63 wt%.",
-        fontsize=5.3,
-        color="#4D4D4D",
-        ha="left",
-        linespacing=1.15,
-    )
+    if show_reference_note:
+        figure.text(
+            0.105,
+            0.035,
+            "Peccerillo & Taylor (1976); coordinates corrected by Rickwood (1989).\n"
+            "Anhydrous 100% basis; no extrapolation; complete four-field domain: SiO2 48–63 wt%.",
+            fontsize=5.3,
+            color="#4D4D4D",
+            ha="left",
+            linespacing=1.15,
+        )
 
     x_limits = model.x_axis.limits
     y_limits = model.y_axis.limits
@@ -356,6 +358,7 @@ def build_figure(
     counts = Counter(classified["K2O_SiO2_status"].tolist())
     return figure, {
         "sample_count": int(len(classified)),
+        "reference_note_on_canvas": show_reference_note,
         "group_count": len(groups) if group_column is not None else 0,
         "visible_coordinate_count": int(within_axes.sum()),
         "outside_axes_count": int((finite & (~within_axes)).sum()),
@@ -406,6 +409,7 @@ def plot_k2o_sio2_path(
     overwrite: bool = False,
     model_path: Path = DEFAULT_MODEL_PATH,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
+    show_reference_note: bool = True,
 ) -> dict[str, Any]:
     """Validate, classify, and export the reviewed K2O-SiO2 figure bundle."""
 
@@ -501,6 +505,7 @@ def plot_k2o_sio2_path(
             width_mm,
             height_mm,
             legend_layout,
+            show_reference_note=show_reference_note,
             style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)

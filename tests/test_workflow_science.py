@@ -137,6 +137,49 @@ def _issue_codes(value: object) -> set[str]:
     return codes
 
 
+@pytest.mark.parametrize(
+    ("recipe_name", "data_name", "task_id", "expected_code"),
+    [
+        (
+            "geoskills_spider_workflow.yaml",
+            "synthetic_spider_data.csv",
+            "spider-main",
+            "E423",
+        ),
+        (
+            "geoskills_major_workflow.yaml",
+            "synthetic_major_element_data.csv",
+            "harker-main",
+            "E424",
+        ),
+    ],
+)
+def test_single_column_blocks_unreadable_dense_layouts(
+    tmp_path: Path,
+    recipe_name: str,
+    data_name: str,
+    task_id: str,
+    expected_code: str,
+) -> None:
+    recipe = yaml.safe_load((EXAMPLES / recipe_name).read_text(encoding="utf-8"))
+    shutil.copyfile(EXAMPLES / data_name, tmp_path / data_name)
+    recipe["output"]["directory"] = "bundle"
+    recipe["tasks"] = [
+        task for task in recipe["tasks"] if task["id"] == task_id
+    ]
+    recipe["tasks"][0]["preset"] = "publication-single-column"
+    recipe_path = tmp_path / "recipe.yaml"
+    recipe_path.write_text(
+        yaml.safe_dump(recipe, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    result = build_plan(recipe_path)
+
+    assert result["status"] == "blocked"
+    assert expected_code in _issue_codes(result)
+
+
 def test_quality_error_blocks_plan_without_leaking_rows_or_values(
     tmp_path: Path,
 ) -> None:

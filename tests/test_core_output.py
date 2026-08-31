@@ -23,6 +23,7 @@ from geoskills_core.plotting import (  # noqa: E402
     GROUP_COLORS,
     MARKERS,
     PUBLICATION_DOUBLE_COLUMN,
+    PUBLICATION_SINGLE_COLUMN,
     REVIEW_PREVIEW,
     STYLE_PRESETS,
     group_style_map,
@@ -54,6 +55,7 @@ def test_style_presets_are_local_and_deterministic() -> None:
     assert mpl.rcParams["axes.spines.right"] == original_right_spine
     assert set(STYLE_PRESETS) == {
         "publication-double-column",
+        "publication-single-column",
         "review-preview",
     }
     styles = group_style_map(["Granite", "Basalt"])
@@ -71,6 +73,7 @@ def test_decorated_plotter_can_select_a_registered_preset() -> None:
         return float(mpl.rcParams["font.size"])
 
     assert current_font_size() == 7.0
+    assert current_font_size(style_preset=PUBLICATION_SINGLE_COLUMN) == 7.0
     assert current_font_size(style_preset=REVIEW_PREVIEW) == 9.0
     assert mpl.rcParams["font.size"] == original_font_size
 

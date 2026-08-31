@@ -17,6 +17,7 @@ from typing import Any, Mapping
 DIAGRAM_API_VERSION = "geoskills.diagram/v1"
 BUILTIN_STYLE_PRESETS = (
     "publication-double-column",
+    "publication-single-column",
     "review-preview",
 )
 
@@ -139,6 +140,10 @@ _OUTPUT_CONTRACT = _freeze(
         "atomic_bundle": True,
         "figure_formats": ("svg", "pdf", "tiff", "png"),
         "includes_source_data": True,
+        "source_data_by_profile": {
+            "shareable": False,
+            "local-reproducible": True,
+        },
         "includes_json_report": True,
         "includes_qa_summary": True,
     }

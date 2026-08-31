@@ -307,6 +307,7 @@ def build_tas_figure(
     width_mm: float,
     height_mm: float,
     legend_layout: str,
+    show_reference_note: bool = True,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
 ) -> tuple[Any, dict[str, Any]]:
     """Build one fixed-geometry volcanic TAS figure."""
@@ -316,7 +317,7 @@ def build_tas_figure(
     figure.subplots_adjust(
         left=0.105,
         right=0.965,
-        bottom=0.15,
+        bottom=0.15 if show_reference_note else 0.11,
         top=0.93 if title else 0.965,
     )
     field_texts: list[Any] = []
@@ -440,19 +441,21 @@ def build_tas_figure(
         if composition_basis == "anhydrous-normalized"
         else "as-reported values; classification is provisional"
     )
-    figure.text(
-        0.105,
-        0.045,
-        "IUGS volcanic TAS (Le Maitre et al., 2002); "
-        + basis_label
-        + "; boundary points require review.",
-        fontsize=5.6,
-        color="#4D4D4D",
-        ha="left",
-    )
+    if show_reference_note:
+        figure.text(
+            0.105,
+            0.045,
+            "IUGS volcanic TAS (Le Maitre et al., 2002); "
+            + basis_label
+            + "; boundary points require review.",
+            fontsize=5.6,
+            color="#4D4D4D",
+            ha="left",
+        )
     counts = Counter(classified["TAS_status"].tolist())
     return figure, {
         "sample_count": int(len(classified)),
+        "reference_note_on_canvas": show_reference_note,
         "group_count": len(groups) if group_column is not None else 0,
         "classification_status_counts": dict(counts),
         "field_counts": {
@@ -506,6 +509,7 @@ def plot_tas_path(
     overwrite: bool = False,
     model_path: Path = DEFAULT_MODEL_PATH,
     style_preset: str = PUBLICATION_DOUBLE_COLUMN,
+    show_reference_note: bool = True,
 ) -> dict[str, Any]:
     """Validate, classify, and export a volcanic TAS figure bundle."""
     figure = None
@@ -630,6 +634,7 @@ def plot_tas_path(
             width_mm,
             height_mm,
             legend_layout,
+            show_reference_note=show_reference_note,
             style_preset=style_preset,
         )
         output_dir.mkdir(parents=True, exist_ok=True)
