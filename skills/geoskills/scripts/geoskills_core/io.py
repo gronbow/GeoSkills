@@ -531,7 +531,8 @@ def build_source_metadata(path: str | Path) -> dict[str, Any]:
 def sniff_text_format(path: str | Path) -> tuple[str, str]:
     """Detect UTF-8/GB18030 and comma/tab separation."""
     input_path = Path(path)
-    raw = input_path.read_bytes()[:65536]
+    with input_path.open("rb") as stream:
+        raw = stream.read(65536)
     decoded: str | None = None
     encoding: str | None = None
     for candidate in TEXT_ENCODINGS:
@@ -740,6 +741,21 @@ def adapt_transposed_table(
     return pd.DataFrame(converted), transformation
 
 
+def _validate_raw_headers(raw: pd.DataFrame) -> None:
+    """Reject ambiguous labels before pandas silently adds .1 suffixes."""
+    if raw.empty:
+        return
+    labels = [str(value).strip() for value in raw.iloc[0] if pd.notna(value) and str(value).strip()]
+    duplicates = len(labels) - len(set(labels))
+    if duplicates:
+        raise InputValidationError(
+            "表头存在重复列名，无法可靠选择数据列。",
+            code="E110",
+            details={"duplicate_header_count": duplicates},
+            suggested_action="在本地副本中为重复列命名，确认列的含义后重新生成计划。",
+        )
+
+
 def _read_text(
     path: Path,
     metadata: dict[str, Any],
@@ -769,6 +785,9 @@ def _read_text(
             metadata["layout"] = "column_per_sample_transposed"
             metadata["transformation"] = transformation
             return frame, metadata
+    else:
+        raw = pd.read_csv(path, sep=delimiter, encoding=encoding, header=None, nrows=1)
+    _validate_raw_headers(raw)
     metadata["layout"] = "row_per_sample"
     frame = pd.read_csv(path, sep=delimiter, encoding=encoding)
     _enforce_frame_budget(frame, table_budget)
@@ -803,6 +822,9 @@ def _read_excel(
                 metadata["layout"] = "column_per_sample_transposed"
                 metadata["transformation"] = transformation
                 return frame, metadata
+        else:
+            raw = pd.read_excel(workbook, sheet_name=selected_sheet, header=None, nrows=1)
+        _validate_raw_headers(raw)
         metadata["layout"] = "row_per_sample"
         frame = pd.read_excel(workbook, sheet_name=selected_sheet)
         _enforce_frame_budget(frame, table_budget)

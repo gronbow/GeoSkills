@@ -6,7 +6,11 @@
 
 GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 
-当前正式版本仍为 [v0.6.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.6.0)。本分支是尚未发布的 v0.8.0 候选版：在 v0.7 通用二维图与安全输入基础上，增加单栏投稿模式、CSV 公式注入保护、依赖漏洞审计和更清晰的项目首页。
+从本地数据到可编辑图件：先核对列名、单位和科学参数，再一次生成 SVG、PDF、TIFF、PNG 与检查报告。
+
+正式下载：[GeoSkills v0.8.0](https://github.com/gronbow/GeoSkills/releases/tag/v0.8.0)。本分支为尚未发布的 v0.9 开发候选版。
+
+[开始使用](#三步开始普通用户) · [选择图件](#六类图件一览) · [安装](#安装到-codex) · [常见问题](docs/troubleshooting.md) · [版本记录](CHANGELOG.md)
 
 ![GeoSkills 六类合成数据图件预览](docs/images/geoskills-gallery.png)
 
@@ -62,11 +66,11 @@ GeoSkills 是一个面向地质学与地球化学研究的本地 Agent Skill。
 - 全程在本地处理数据，绘图脚本不请求网络服务。
 
 安全问题请按 [Security policy](SECURITY.md) 中的私密报告流程处理，不要在公开 issue 中附加真实数据或漏洞细节。
-本候选版的已完成改进、验收证据和后续优先级见 [v0.8 综合审查](docs/audits/v0.8-candidate-audit.md)。
+本轮改动与后续优先级见 [v0.9 仓库审查](docs/audits/v0.9-candidate-audit.md)；历史记录见 [v0.8 综合审查](docs/audits/v0.8-candidate-audit.md)。
 
 ## 安装到 Codex
 
-公开仓库的默认分支 `main` 包含经过审核和自动测试的正式 v0.6.0：
+首次使用建议下载 [v0.8.0 正式版源码 ZIP](https://github.com/gronbow/GeoSkills/archive/refs/tags/v0.8.0.zip)，解压后找到 `skills/geoskills`。仓库地址：
 
 ```text
 https://github.com/gronbow/GeoSkills
@@ -97,7 +101,7 @@ python -m venv .venv
 
 如果系统只提供 Python Launcher，可以把第一条命令改为 `py -3.12 -m venv .venv`。
 
-## v0.7 统一工作流候选版
+## 统一工作流
 
 可以把“配方”理解为一张实验记录表，把“计划”理解为正式运行前的核对清单：
 
@@ -145,7 +149,8 @@ python -m venv .venv
 
 配方字段、质控/组成基准/派生比值、六类任务示例、返回状态和常见错误见 [配方与安全运行流程](skills/geoskills/references/workflow-and-recipe.md)、[数据质控、组成基准与派生比值](skills/geoskills/references/data-quality-and-derived-variables.md) 和 [K2O-SiO2 科学合同](skills/geoskills/references/k2o-sio2-method.md)。对于旧项目或高级排错，下列 v0.3 单脚本命令仍保持兼容。
 
-## v0.3 单脚本兼容命令
+<details>
+<summary>高级用户：展开 v0.3 单脚本兼容命令</summary>
 
 先检查示例数据：
 
@@ -204,6 +209,8 @@ TAS 命令要求明确确认样品属于火山岩，并声明数据是无水归�
 
 程序不会修改原始表格。重复使用同一输出名称时，只有显式加入 `--overwrite` 才会替换已有结果。
 
+</details>
+
 ## 项目结构
 
 ```text
@@ -245,12 +252,12 @@ GeoSkills/
 - 通用分类底座只接受带文献来源、审核状态和可固定哈希的严格本地模型；除已审核的 K2O-SiO2 资产外，不宣称支持其他未经复核的分类图。
 - Zr/TiO2-Nb/Y 在 v0.6 只验证坐标计算能力，没有注册边界或分类图；取得可靠原始数值边界并再次专业复核前不会开放。
 - 多任务结果以完整目录为单位提交；中途失败不会留下半套新输出，也不会破坏原有完整目录。
-- 覆盖运行只替换带有效 GeoSkills 运行报告的旧结果目录；普通同名文件夹会被保护。
+- 覆盖运行核对旧报告中的文件清单、SHA-256 指纹及根目录 QA 摘要；加入个人文件、删除或修改图件后会停止覆盖，请换一个输出目录。
 - `local_data/` 和 `outputs/` 已排除在 Git 之外；不要提交私人或未发表数据。
 
 ## 当前状态
 
-GeoSkills v0.6.0 已于 2026-08-10 正式发布。该版本加入无水100%组成基准、K2O-SiO2 正式图解，以及未注册边界的 Zr/TiO2-Nb/Y 坐标计算测试底座；发布验收包含 231 项自动测试、Skill 结构验证、合成多任务工作流、可分享产物隐私扫描，以及 Ubuntu/Windows 上 Python 3.11 和 3.12 的持续集成测试。版本变化见 [CHANGELOG.md](CHANGELOG.md)。
+GeoSkills v0.8.0 于 2026-08-31 正式发布，包含六类图件、单栏投稿模式、输入资源限制和 CSV 导出保护。该版本发布回归为 283 项通过、1 项跳过；v0.9 候选版的验证单独记录在审查文档中。当前产品是本地 Skill 与命令行程序，没有独立 Web 应用。自动测试不能代替最终科学判断和投稿前的目视检查。
 
 ## 许可
 

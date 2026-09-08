@@ -218,7 +218,7 @@ def test_version_works_without_site_packages() -> None:
     report = parse_stdout(result)
     assert result.returncode == 0
     assert report["status"] == "ready"
-    assert report["result"]["tool_version"] == "0.8.0"
+    assert report["result"]["tool_version"] == "0.9.0-rc1"
 
 
 def test_self_check_is_machine_readable_and_private_by_default() -> None:
@@ -486,7 +486,6 @@ def test_multitask_failure_preserves_previous_complete_directory(
     previous_figure = (
         target / "ree-1" / "figure-ree-1.svg"
     ).read_bytes()
-    (target / "previous.txt").write_text("keep", encoding="utf-8")
 
     calls = 0
     real_run_task = workflow.run_task
@@ -516,7 +515,7 @@ def test_multitask_failure_preserves_previous_complete_directory(
     result = execute_plan(recipe_path, plan_path, overwrite=True)
 
     assert result["status"] == "error"
-    assert (target / "previous.txt").read_text(encoding="utf-8") == "keep"
+    assert calls == 2
     assert (
         target / "ree-1" / "figure-ree-1.svg"
     ).read_bytes() == previous_figure

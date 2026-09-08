@@ -2,6 +2,15 @@
 
 This file records the user-visible changes in each public GeoSkills release.
 
+## v0.9.0-rc1 — unreleased candidate
+
+- Refuse whole-directory overwrite when the previous output inventory has added, missing, or edited task files, or an edited root QA summary; preserve user additions before rendering.
+- Reject duplicate source headers in CSV/TXT/XLSX before pandas silently renames columns, with count-only error details.
+- Read only the first 64 KiB during text-format detection instead of allocating the full input file.
+- Correct stale release and installation information, streamline the project page, and add beginner troubleshooting guidance.
+- Avoid duplicate branch/PR test matrices, cancel superseded checks, and retain main-branch and manual test runs.
+- Exclude the alternative localdata directory and local environment secrets from Git by default.
+
 ## v0.8.0 — 2026-08-31
 
 - Added an 89 × 75 mm, 600 dpi `publication-single-column` preset; long reference notes move from the canvas into the existing report/QA provenance trail.
