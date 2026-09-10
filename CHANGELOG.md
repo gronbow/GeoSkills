@@ -8,6 +8,7 @@ This file records the user-visible changes in each public GeoSkills release.
 - Reject duplicate source headers in CSV/TXT/XLSX before pandas silently renames columns, with count-only error details.
 - Read only the first 64 KiB during text-format detection instead of allocating the full input file.
 - Correct stale release and installation information, streamline the project page, and add beginner troubleshooting guidance.
+- Make the main README English-first, retain a Chinese README, and provide language-switch links and English workflow guidance.
 - Avoid duplicate branch/PR test matrices, cancel superseded checks, and retain main-branch and manual test runs.
 - Exclude the alternative localdata directory and local environment secrets from Git by default.
 
