@@ -3,7 +3,7 @@ name: geoskills
 description: "Create validated, submission-oriented geochemical figures from local CSV, TXT, or Excel tables. Use GeoSkills for privacy-safe data QA, explicit anhydrous 100% normalization, deterministic same-unit ratios, Sun and McDonough (1989) chondrite-normalized REE patterns, primitive-mantle or N-MORB-normalized trace-element spider diagrams, customizable Harker diagrams, guarded volcanic TAS classification, the reviewed non-extrapolated K2O-SiO2 magma-series diagram, and coordinate-only grouped XY plots with independent linear or log10 axes; for explicit column/unit mapping; for a reviewable multi-task plotting recipe; or for editable SVG/PDF plus high-resolution TIFF/PNG and privacy-safe QA reports. Do not use it for isotope or tectonic-discrimination diagrams."
 ---
 
-# GeoSkills v0.8 candidate workflow
+# GeoSkills local workflow
 
 Use deterministic local Python for all table reading, normalization, classification, plotting, and export. The language model may guide choices and explain results, but must not calculate normalized ratios, convert oxides, or classify TAS fields manually.
 
@@ -68,6 +68,7 @@ Never infer TAS applicability from sample names or values. Do not apply volcanic
 - Keep the printed and footnote-modified primitive-mantle variants separate.
 - Enforce the fixed table, raster, point, group, and artist budgets before plotting. Never silently sample rows, merge groups, or drop variables to fit a budget.
 - Before retaining `local-reproducible` CSV output, block sample or group labels that begin with spreadsheet formula prefixes. Report counts only; never echo the labels.
+- Reject duplicate source headers before automatic column renaming can hide ambiguity. Ask the user to clarify them in a local copy.
 - Round Harker and logarithmic limits outward without clipping data. Keep TAS at the model's fixed limits.
 - Keep the K2O-SiO2 literature lines at their original lengths. Classify only within the complete four-field SiO2 domain of 48–63 wt%; plot but do not force-classify other visible points.
 
@@ -102,6 +103,8 @@ In `shareable` mode, suppress sample identifiers inside the figures themselves a
 Also omit source filenames, worksheet names, source-column labels, and selected group values from shareable plans and reports. Group names remain visible scientific labels inside figures, so require the user to review or anonymize sensitive locality/project labels before confirming plotted-data export.
 
 The workflow commits a multi-task output directory only after every task succeeds. Do not bypass stale-plan checks or overwrite an existing bundle unless the user explicitly approves replacement.
+
+If overwrite reports E826, preserve the existing directory and choose a new output location. The inventory check protects extra files and changed task outputs; do not delete them to bypass the check. Keep manual notes outside generated output directories.
 
 ## Legacy compatibility
 

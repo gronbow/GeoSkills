@@ -9,9 +9,15 @@ venv/
 
 # Local/private data and generated output
 local_data/
+localdata/
 outputs/
 skills/geoskills/examples/generated/
 tmp/
+
+# Local environment secrets (keep documented placeholders shareable)
+.env
+.env.*
+!.env.example
 
 # Editor and operating-system files
 .vscode/

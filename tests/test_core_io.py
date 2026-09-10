@@ -9,6 +9,25 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "geoskills" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
+from geoskills_core.errors import InputValidationError
+
+
+@pytest.mark.parametrize("extension", ["csv", "txt", "xlsx"])
+@pytest.mark.parametrize("transpose", [True, False])
+def test_duplicate_source_headers_fail_before_silent_renaming(tmp_path, extension, transpose):
+    path = tmp_path / f"input.{extension}"
+    rows = [["Sample", "private_label", "private_label"], ["S1", 10, 20]]
+    if extension == "xlsx":
+        pd.DataFrame(rows).to_excel(path, index=False, header=False)
+    else:
+        separator = "\t" if extension == "txt" else ","
+        path.write_text("\n".join(separator.join(map(str, row)) for row in rows), encoding="utf-8")
+    options = {} if transpose else {"transposer": None}
+    with pytest.raises(InputValidationError) as caught:
+        read_table(path, **options)
+    assert caught.value.code == "E110"
+    assert caught.value.details == {"duplicate_header_count": 1}
+    assert "private_label" not in str(caught.value)
 
 from geoskills_core import (  # noqa: E402
     ColumnMapping,
@@ -27,6 +46,13 @@ from geoskills_core import (  # noqa: E402
     validate_column_mappings,
     validate_table_structure,
 )
+
+
+def test_text_sniffer_does_not_allocate_the_whole_file(tmp_path, monkeypatch):
+    path = tmp_path / "large.csv"
+    path.write_text("Sample,La_ppm\n" + "S1,1\n" * 20000, encoding="utf-8")
+    monkeypatch.setattr(Path, "read_bytes", lambda self: pytest.fail("unbounded file read"))
+    assert sniff_text_format(path) == ("utf-8-sig", ",")
 
 
 def test_csv_metadata_is_share_safe_and_content_addressed(

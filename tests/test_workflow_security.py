@@ -302,8 +302,6 @@ def test_failed_overwrite_preserves_valid_previous_bundle(
     target = tmp_path / "bundle"
     previous_svg = target / "ree-1" / "figure-ree-1.svg"
     previous_hash = workflow.sha256_file(previous_svg)
-    sentinel = target / "previous.txt"
-    sentinel.write_text("keep", encoding="utf-8")
 
     def failed_runner(*args: Any, **kwargs: Any) -> dict[str, Any]:
         return {
@@ -322,8 +320,40 @@ def test_failed_overwrite_preserves_valid_previous_bundle(
     result = execute_plan(recipe_path, plan_path, overwrite=True)
 
     assert result["status"] == "error"
-    assert sentinel.read_text(encoding="utf-8") == "keep"
     assert workflow.sha256_file(previous_svg) == previous_hash
+
+
+@pytest.mark.parametrize("change", ["extra-file", "extra-directory", "edited-file", "missing-file", "edited-qa"])
+def test_overwrite_preserves_user_changes(tmp_path: Path, monkeypatch, change: str) -> None:
+    recipe_path, plan_path = _plan_ready(tmp_path)
+    assert execute_plan(recipe_path, plan_path)["status"] == "ready"
+    target = tmp_path / "bundle"
+    assert workflow._existing_output_issue(target, overwrite=True) is None
+    figure = target / "ree-1" / "figure-ree-1.svg"
+    if change == "extra-file":
+        (target / "ree-1" / "private-notes.txt").write_text("keep", encoding="utf-8")
+    elif change == "extra-directory":
+        (target / "notes").mkdir()
+    elif change == "edited-file":
+        data = figure.read_bytes()
+        figure.write_bytes(b"!" + data[1:])  # Same length: require a hash check.
+    elif change == "edited-qa":
+        (target / "run.qa.md").write_text("My notes", encoding="utf-8")
+    else:
+        figure.unlink()
+    before = {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    monkeypatch.setattr(workflow, "run_task", lambda *a, **kw: pytest.fail("must block before plotting"))
+    result = execute_plan(recipe_path, plan_path, overwrite=True)
+    assert "E826" in _issue_codes(result)
+    assert result["status"] == "blocked"
+    assert before == {p.relative_to(target): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+
+
+def test_unchanged_complete_bundle_can_be_overwritten(tmp_path: Path) -> None:
+    recipe_path, plan_path = _plan_ready(tmp_path)
+    assert execute_plan(recipe_path, plan_path)["status"] == "ready"
+    assert execute_plan(recipe_path, plan_path, overwrite=True)["status"] == "ready"
+    assert workflow._existing_output_issue(tmp_path / "bundle", overwrite=True) is None
 
 
 def test_atomic_directory_keeps_backup_when_restore_also_fails(

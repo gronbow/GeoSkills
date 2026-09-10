@@ -1414,6 +1414,7 @@ def _existing_output_issue(
             != "multi_task_geochemistry_workflow"
         ):
             raise ValueError("foreign-marker")
+        _verify_existing_inventory(target, document)
     except (
         OSError,
         UnicodeError,
@@ -1428,6 +1429,60 @@ def _existing_output_issue(
             suggested_action="改用新的 output.directory，或先人工整理旧目录。",
         )
     return None
+
+
+def _verify_existing_inventory(target: Path, document: Mapping[str, Any]) -> None:
+    """Preserve additions and edits made after the previous completed run."""
+    expected_files = {"run.report.json", "run.qa.md"}
+    expected_directories: set[str] = set()
+    qa_path = target / "run.qa.md"
+    if qa_path.is_symlink() or not qa_path.is_file():
+        raise ValueError("missing-or-linked-qa")
+    if qa_path.stat().st_size > MAX_PLAN_BYTES:
+        raise ValueError("oversized-qa")
+    if qa_path.read_text(encoding="utf-8") != render_qa_markdown(document):
+        raise ValueError("modified-qa")
+    records = document.get("outputs")
+    if not isinstance(records, list) or not records:
+        raise ValueError("missing-output-inventory")
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("invalid-output-inventory")
+        relative = record.get("relative_path", record.get("filename", ""))
+        if not isinstance(relative, str) or "\\" in relative:
+            raise ValueError("unsafe-output-inventory")
+        parts = relative.split("/")
+        if len(parts) != 2 or any(part in {"", ".", ".."} or ":" in part for part in parts):
+            raise ValueError("unsafe-output-inventory")
+        if relative in expected_files:
+            raise ValueError("duplicate-output-inventory")
+        expected_files.add(relative)
+        expected_directories.add(parts[0])
+        path = target.joinpath(*parts)
+        if (
+            path.parent.is_symlink() or path.is_symlink()
+            or (hasattr(path.parent, "is_junction") and path.parent.is_junction())
+            or not path.is_file()
+        ):
+            raise ValueError("missing-or-linked-output")
+        if path.stat().st_size != record.get("bytes"):
+            raise ValueError("modified-output")
+        if sha256_file(path) != record.get("sha256"):
+            raise ValueError("modified-output")
+    actual_files: set[str] = set()
+    actual_directories: set[str] = set()
+    for path in target.rglob("*"):
+        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+            raise ValueError("linked-output")
+        relative = path.relative_to(target).as_posix()
+        if path.is_file():
+            actual_files.add(relative)
+        elif path.is_dir():
+            actual_directories.add(relative)
+        else:
+            raise ValueError("unsupported-output")
+    if actual_files != expected_files or actual_directories != expected_directories:
+        raise ValueError("changed-output-inventory")
 
 
 def _verify_run_directory(
