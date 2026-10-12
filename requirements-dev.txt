@@ -1,2 +1,2 @@
 -r skills/geoskills/scripts/requirements.txt
-pytest>=8,<10
+pytest>=9.1.1,<10
